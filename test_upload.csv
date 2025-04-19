@@ -1,0 +1,4 @@
+name,base_salary,pool_share,target_bonus,performance_score,last_year_revenue,role,level,is_mrt,performance_rating
+Test Manager 1,100000,0.05,20000,0.8,500000,Fund Manager,Junior,FALSE,Exceeds Expectations
+Test Manager 2,120000,0.06,25000,0.7,600000,Fund Manager,Mid,TRUE,Meets Expectations
+Test Manager 3,150000,0.07,30000,0.6,700000,Fund Manager,Senior,FALSE,Below Expectations

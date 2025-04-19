@@ -1,0 +1,6 @@
+name,base_salary,pool_share,target_bonus,performance_score,last_year_revenue,role,level,is_mrt,performance_rating
+Fund Manager 1,224871.23,0.05,43790.38,0.8,3755205,Fund Manager,Senior,FALSE,Exceeds Expectations
+Fund Manager 2,386200.01,0.06,109475.23,0.7,5566360,Fund Manager,Senior,TRUE,Meets Expectations
+Fund Manager 3,324958.3,0.04,67135.79,0.9,4794623,Fund Manager,Senior,FALSE,Below Expectations
+Fund Manager 4,287624.38,0.07,102777.23,0.75,7991656,Fund Manager,Senior,FALSE,Exceeds Expectations
+Fund Manager 5,163685.22,0.09,184414.23,0.85,12939120,Fund Manager,Mid,FALSE,Meets Expectations

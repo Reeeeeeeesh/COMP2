@@ -25,11 +25,18 @@ def upload_data(request):
     except Exception as e:
         return Response({'error': f'Error reading file: {str(e)}'}, status=400)
     reader = csv.DictReader(decoded)
+    
+    # Debug: Print CSV headers
+    print("CSV HEADERS:", reader.fieldnames)
+    
     required = ['name', 'base_salary', 'pool_share', 'target_bonus', 'performance_score', 'last_year_revenue']
     if not set(required).issubset(set(reader.fieldnames or [])):
         return Response({'error': 'Missing required columns', 'found': reader.fieldnames}, status=400)
     created, updated, errors = [], [], []
     for idx, row in enumerate(reader, start=2):
+        # Debug: Print each row
+        print(f"ROW {idx}: {row}")
+        
         try:
             data = {
                 'base_salary': Decimal(row['base_salary']),
@@ -37,13 +44,26 @@ def upload_data(request):
                 'target_bonus': Decimal(row['target_bonus']),
                 'performance_score': Decimal(row['performance_score']),
                 'last_year_revenue': Decimal(row['last_year_revenue']),
+                # Add additional fields if present in the CSV
+                'role': row.get('role', None),
+                'level': row.get('level', None),
+                'is_mrt': row.get('is_mrt', '').lower() == 'true',
+                'performance_rating': row.get('performance_rating', '').strip() or None, # Strip whitespace, store None if empty
             }
+            # Debug: Print processed data
+            print(f"PROCESSED DATA: {data}")
+            
             emp, created_flag = Employee.objects.update_or_create(name=row['name'], defaults=data)
+            
+            # Debug: Print employee after save
+            print(f"SAVED EMPLOYEE: {emp.name}, Rating: {emp.performance_rating}, MRT: {emp.is_mrt}")
+            
             if created_flag:
                 created.append(emp.name)
             else:
                 updated.append(emp.name)
         except Exception as e:
+            print(f"ERROR processing row {idx}: {str(e)}")
             errors.append({'row': idx, 'error': str(e)})
     return Response({'created': created, 'updated': updated, 'errors': errors})
 
@@ -65,6 +85,7 @@ def employees_list(request):
 @api_view(['POST'])
 def calculate(request):
     """Run Model A and B comparison for all employees."""
+    print("REQUEST DATA:", request.data)
     try:
         # Get common parameters
         revenue_delta = Decimal(str(request.data.get('revenue_delta', 0)))
@@ -76,14 +97,37 @@ def calculate(request):
         # Get model selection parameter
         use_proposed_model = bool(request.data.get('use_proposed_model', False))
         current_year = int(request.data.get('current_year', 2025))
+        # Get proposed model parameters
+        performance_rating = request.data.get('performance_rating', 'Meets Expectations')
+        is_mrt = bool(request.data.get('is_mrt', False))
+        use_overrides = bool(request.data.get('use_overrides', True))
+        
+        print("PARAMS:", {
+            "use_proposed_model": use_proposed_model,
+            "performance_rating": performance_rating,
+            "is_mrt": is_mrt,
+            "use_overrides": use_overrides,
+            "current_year": current_year
+        })
     except Exception as e:
+        print("ERROR:", str(e))
         return Response({'error': f'Invalid parameters: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     
-    employees = Employee.objects.all()
+    # If using proposed model without overrides, calculate only on employees imported via CSV (have a performance_rating)
+    if use_proposed_model and not use_overrides:
+        employees = Employee.objects.filter(performance_rating__isnull=False).exclude(performance_rating='')
+    else:
+        employees = Employee.objects.all()
+    print("EMPLOYEE COUNT:", employees.count())
+    for emp in employees[:3]:  # Print first 3 for debugging
+        print(f"EMPLOYEE: {emp.name}, Rating: {emp.performance_rating}, MRT: {emp.is_mrt}")
     
     # Run selected model
     if use_proposed_model:
-        output = run_proposed_model_for_all(employees, current_year)
+        if use_overrides:
+            output = run_proposed_model_for_all(employees, current_year, performance_rating, is_mrt)
+        else:
+            output = run_proposed_model_for_all(employees, current_year)
     else:
         output = run_comparison(employees, revenue_delta, adjustment_factor, use_pool_method)
         

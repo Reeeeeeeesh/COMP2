@@ -105,7 +105,7 @@ def get_merit_increase(performance_rating, compa_ratio_quartile):
         return default_matrix[rating][quartile]
 
 
-def calculate_merit_increase(employee, current_year=2025):
+def calculate_merit_increase(employee, current_year=2025, override_performance_rating=None):
     """
     Calculate merit increase based on performance rating, compa-ratio, and team revenue trend
     """
@@ -114,7 +114,14 @@ def calculate_merit_increase(employee, current_year=2025):
     quartile = get_compa_ratio_quartile(compa_ratio)
     
     # Get performance rating (default if not set)
-    performance_rating = employee.performance_rating or 'Meets Expectations'
+    if override_performance_rating and override_performance_rating != "":
+        performance_rating = override_performance_rating
+    else:
+        performance_rating = employee.performance_rating or 'Meets Expectations'
+        
+    print(f"MERIT INCREASE - Employee: {employee.name}")
+    print(f"  Using Performance Rating: {performance_rating}")
+    print(f"  (Override: {override_performance_rating}, Employee: {employee.performance_rating})")
     
     # Get team revenue trend
     trend_category = get_team_revenue_trend(employee.team, current_year)
@@ -145,15 +152,46 @@ def calculate_merit_increase(employee, current_year=2025):
     }
 
 
-def calculate_bonus(employee, current_year=2025):
+def calculate_bonus(employee, current_year=2025, override_performance_rating=None):
     """
     Calculate bonus based on KPI achievement
     """
+    print(f"BONUS CALC - Employee: {employee.name}")
+    print(f"  Override Rating: {override_performance_rating}")
+    print(f"  Employee Rating: {employee.performance_rating}")
+    
     try:
         kpi = KpiAchievement.objects.get(employee=employee, year=current_year)
     except KpiAchievement.DoesNotExist:
         # Default to using performance_score if no KPI data
-        achievement = employee.performance_score
+        # Always use override rating when provided
+        if override_performance_rating is not None and override_performance_rating != "":
+            # Convert rating to a score
+            if override_performance_rating == 'Exceeds Expectations':
+                achievement = Decimal('0.9')
+            elif override_performance_rating == 'Meets Expectations':
+                achievement = Decimal('0.7')
+            elif override_performance_rating == 'Below Expectations':
+                achievement = Decimal('0.4')
+            else:
+                achievement = employee.performance_score
+        else:
+            # Use employee's performance rating if available, default if missing
+            effective_rating = employee.performance_rating or 'Meets Expectations'
+            print(f"  Using Effective Rating (Bonus Fallback): {effective_rating}")
+            
+            if effective_rating == 'Exceeds Expectations':
+                achievement = Decimal('0.9')
+            elif effective_rating == 'Meets Expectations':
+                achievement = Decimal('0.7')
+            elif effective_rating == 'Below Expectations':
+                achievement = Decimal('0.4')
+            else:
+                # Should not happen if defaulting works, but keep fallback
+                achievement = employee.performance_score
+                
+        print(f"  Using Achievement: {achievement}")
+        
         return {
             'employee': employee.name,
             'kpi_achievement': achievement,
@@ -191,7 +229,7 @@ def calculate_bonus(employee, current_year=2025):
     }
 
 
-def apply_regulatory_requirements(bonus_amount, is_mrt):
+def apply_regulatory_requirements(bonus_amount, is_mrt, employee):
     """Apply regulatory requirements to bonus amount"""
     if not is_mrt:
         return {
@@ -227,20 +265,30 @@ def apply_regulatory_requirements(bonus_amount, is_mrt):
     }
 
 
-def run_proposed_model(employee, current_year=2025):
+def run_proposed_model(employee, current_year=2025, override_performance_rating=None, override_is_mrt=None):
     """
     Run the proposed compensation model for an employee
     """
+    print(f"RUN PROPOSED MODEL - Employee: {employee.name}")
+    print(f"  Override Performance Rating: {override_performance_rating}")
+    print(f"  Employee Performance Rating: {employee.performance_rating}")
+    print(f"  Override MRT: {override_is_mrt}")
+    print(f"  Employee MRT: {employee.is_mrt}")
+    
     # Calculate merit increase
-    merit_result = calculate_merit_increase(employee, current_year)
+    merit_result = calculate_merit_increase(employee, current_year, override_performance_rating)
     
     # Calculate bonus
-    bonus_result = calculate_bonus(employee, current_year)
+    bonus_result = calculate_bonus(employee, current_year, override_performance_rating)
+    
+    # Determine MRT status
+    is_mrt = override_is_mrt if override_is_mrt is not None else employee.is_mrt
     
     # Apply regulatory requirements
     reg_result = apply_regulatory_requirements(
         bonus_result['bonus_amount'], 
-        employee.is_mrt
+        is_mrt,
+        employee
     )
     
     # Combine results
@@ -265,13 +313,21 @@ def run_proposed_model(employee, current_year=2025):
     }
 
 
-def run_proposed_model_for_all(employees, current_year=2025):
+def run_proposed_model_for_all(employees, current_year=2025, override_performance_rating=None, override_is_mrt=None):
     """Run proposed model for multiple employees"""
+    print(f"RUN PROPOSED MODEL FOR ALL - Override Rating: {override_performance_rating}, Override MRT: {override_is_mrt}")
     results = []
     total_comp = Decimal('0')
     
+    if override_performance_rating:
+        print(f"Applying override performance rating '{override_performance_rating}' to all employees")
+    if override_is_mrt is not None:
+        print(f"Applying override MRT status '{override_is_mrt}' to all employees")
+    else:
+        print("Using individual employee performance ratings from database")
+        
     for emp in employees:
-        result = run_proposed_model(emp, current_year)
+        result = run_proposed_model(emp, current_year, override_performance_rating, override_is_mrt)
         results.append(result)
         total_comp += result['total_compensation']
     
