@@ -1,0 +1,6 @@
+name,base_salary,pool_share,target_bonus,performance_score,last_year_revenue,role,level,is_mrt,performance_rating
+John Smith,150000,0.05,30000,0.8,500000,Fund Manager,Senior,True,Exceeds Expectations
+Jane Doe,120000,0.03,20000,0.9,300000,Fund Manager,Mid,False,Meets Expectations
+Michael Johnson,175000,0.07,40000,0.75,700000,Portfolio Manager,Senior,True,Meets Expectations
+Sarah Williams,90000,0.02,15000,0.95,200000,Analyst,Junior,False,Exceeds Expectations
+Robert Brown,200000,0.1,50000,0.6,1000000,Head of Investments,Executive,True,Below Expectations

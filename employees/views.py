@@ -6,6 +6,7 @@ import csv
 from .models import Employee
 from .serializers import EmployeeSerializer
 from .compensation_engine import run_comparison
+from .merit_engine import run_proposed_model_for_all
 from rest_framework import status
 
 @api_view(['GET'])
@@ -65,11 +66,25 @@ def employees_list(request):
 def calculate(request):
     """Run Model A and B comparison for all employees."""
     try:
+        # Get common parameters
         revenue_delta = Decimal(str(request.data.get('revenue_delta', 0)))
+        
+        # Get model-specific parameters
         adjustment_factor = Decimal(str(request.data.get('adjustment_factor', 1)))
         use_pool_method = bool(request.data.get('use_pool_method', False))
+        
+        # Get model selection parameter
+        use_proposed_model = bool(request.data.get('use_proposed_model', False))
+        current_year = int(request.data.get('current_year', 2025))
     except Exception as e:
         return Response({'error': f'Invalid parameters: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+    
     employees = Employee.objects.all()
-    output = run_comparison(employees, revenue_delta, adjustment_factor, use_pool_method)
+    
+    # Run selected model
+    if use_proposed_model:
+        output = run_proposed_model_for_all(employees, current_year)
+    else:
+        output = run_comparison(employees, revenue_delta, adjustment_factor, use_pool_method)
+        
     return Response(output)
