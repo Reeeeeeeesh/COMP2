@@ -267,6 +267,31 @@ class ConfigBulkUploadView(APIView):
             return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'detail':'All data uploaded successfully'}, status=status.HTTP_201_CREATED)
 
+# CSV upload for Team master data
+class TeamUploadView(APIView):
+    parser_classes = [MultiPartParser]
+    def post(self, request, format=None):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        # clear existing teams
+        Team.objects.all().delete()
+        data = file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(data)
+        errors = []
+        for idx, row in enumerate(reader, start=1):
+            name_val = row.get('name')
+            if not name_val:
+                errors.append({'row': idx, 'errors':'Missing name column'})
+                continue
+            try:
+                Team.objects.create(name=name_val)
+            except Exception as e:
+                errors.append({'row': idx, 'errors': str(e)})
+        if errors:
+            return Response({'errors':errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail':'Teams uploaded successfully'}, status=status.HTTP_201_CREATED)
+
 # Add DRF viewsets for configuration models
 class SalaryBandViewSet(viewsets.ModelViewSet):
     queryset = SalaryBand.objects.all()
