@@ -3,11 +3,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from decimal import Decimal
 import csv
-from .models import Employee
-from .serializers import EmployeeSerializer
+from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement
+from .serializers import EmployeeSerializer, SalaryBandSerializer, TeamRevenueSerializer, MeritMatrixSerializer, RevenueTrendFactorSerializer, KpiAchievementSerializer
 from .compensation_engine import run_comparison
 from .merit_engine import run_proposed_model_for_all
-from rest_framework import status
+from rest_framework import status, viewsets
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser
 
 @api_view(['GET'])
 def ping(request):
@@ -132,3 +134,138 @@ def calculate(request):
         output = run_comparison(employees, revenue_delta, adjustment_factor, use_pool_method)
         
     return Response(output)
+
+# Bulk CSV upload endpoints for configuration models
+class SalaryBandUploadView(APIView):
+    parser_classes = [MultiPartParser]
+    def post(self, request, format=None):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        data = file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(data)
+        errors = []
+        for idx, row in enumerate(reader, start=1):
+            serializer = SalaryBandSerializer(data=row)
+            if serializer.is_valid(): serializer.save()
+            else: errors.append({'row': idx, 'errors': serializer.errors})
+        if errors: return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail':'Upload successful'}, status=status.HTTP_201_CREATED)
+
+class TeamRevenueUploadView(APIView):
+    parser_classes = [MultiPartParser]
+    def post(self, request, format=None):
+        file = request.FILES.get('file')
+        if not file: return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        data = file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(data)
+        errors = []
+        for idx, row in enumerate(reader, start=1):
+            serializer = TeamRevenueSerializer(data=row)
+            if serializer.is_valid(): serializer.save()
+            else: errors.append({'row': idx, 'errors': serializer.errors})
+        if errors: return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail':'Upload successful'}, status=status.HTTP_201_CREATED)
+
+class MeritMatrixUploadView(APIView):
+    parser_classes = [MultiPartParser]
+    def post(self, request, format=None):
+        file = request.FILES.get('file')
+        if not file: return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        data = file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(data)
+        errors = []
+        for idx, row in enumerate(reader, start=1):
+            serializer = MeritMatrixSerializer(data=row)
+            if serializer.is_valid(): serializer.save()
+            else: errors.append({'row': idx, 'errors': serializer.errors})
+        if errors: return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail':'Upload successful'}, status=status.HTTP_201_CREATED)
+
+class RevenueTrendFactorUploadView(APIView):
+    parser_classes = [MultiPartParser]
+    def post(self, request, format=None):
+        file = request.FILES.get('file')
+        if not file: return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        data = file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(data)
+        errors = []
+        for idx, row in enumerate(reader, start=1):
+            serializer = RevenueTrendFactorSerializer(data=row)
+            if serializer.is_valid(): serializer.save()
+            else: errors.append({'row': idx, 'errors': serializer.errors})
+        if errors: return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail':'Upload successful'}, status=status.HTTP_201_CREATED)
+
+class KpiAchievementUploadView(APIView):
+    parser_classes = [MultiPartParser]
+    def post(self, request, format=None):
+        file = request.FILES.get('file')
+        if not file: return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        data = file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(data)
+        errors = []
+        for idx, row in enumerate(reader, start=1):
+            serializer = KpiAchievementSerializer(data=row)
+            if serializer.is_valid(): serializer.save()
+            else: errors.append({'row': idx, 'errors': serializer.errors})
+        if errors: return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail':'Upload successful'}, status=status.HTTP_201_CREATED)
+
+# Bulk upload all configuration models from a single CSV file
+class ConfigBulkUploadView(APIView):
+    parser_classes = [MultiPartParser]
+    def post(self, request, format=None):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        content = file.read().decode('utf-8').replace('\r\n','\n')
+        sections = [sec.strip() for sec in content.split('\n\n') if sec.strip()]
+        errors = []
+        for sec in sections:
+            lines = sec.split('\n')
+            header = lines[0].split(',')
+            reader = csv.DictReader(lines)
+            if 'role' in header and 'level' in header:
+                serializer_class = SalaryBandSerializer
+            elif 'team' in header and 'revenue' in header:
+                serializer_class = TeamRevenueSerializer
+            elif 'performance_rating' in header and 'compa_ratio_range' in header:
+                serializer_class = MeritMatrixSerializer
+            elif 'trend_category' in header:
+                serializer_class = RevenueTrendFactorSerializer
+            elif 'investment_performance' in header and 'risk_management' in header:
+                serializer_class = KpiAchievementSerializer
+            else:
+                errors.append({'section': header, 'error': 'Unknown section header'})
+                continue
+            for idx, row in enumerate(reader, start=1):
+                serializer = serializer_class(data=row)
+                if serializer.is_valid():
+                    serializer.save()
+                else:
+                    errors.append({'section': header, 'row': idx, 'errors': serializer.errors})
+        if errors:
+            return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail':'All data uploaded successfully'}, status=status.HTTP_201_CREATED)
+
+# Add DRF viewsets for configuration models
+class SalaryBandViewSet(viewsets.ModelViewSet):
+    queryset = SalaryBand.objects.all()
+    serializer_class = SalaryBandSerializer
+
+class TeamRevenueViewSet(viewsets.ModelViewSet):
+    queryset = TeamRevenue.objects.all()
+    serializer_class = TeamRevenueSerializer
+
+class MeritMatrixViewSet(viewsets.ModelViewSet):
+    queryset = MeritMatrix.objects.all()
+    serializer_class = MeritMatrixSerializer
+
+class RevenueTrendFactorViewSet(viewsets.ModelViewSet):
+    queryset = RevenueTrendFactor.objects.all()
+    serializer_class = RevenueTrendFactorSerializer
+
+class KpiAchievementViewSet(viewsets.ModelViewSet):
+    queryset = KpiAchievement.objects.all()
+    serializer_class = KpiAchievementSerializer
