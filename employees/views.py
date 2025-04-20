@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from decimal import Decimal
 import csv
-from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement
+from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, Team
 from .serializers import EmployeeSerializer, SalaryBandSerializer, TeamRevenueSerializer, MeritMatrixSerializer, RevenueTrendFactorSerializer, KpiAchievementSerializer
 from .compensation_engine import run_comparison
 from .merit_engine import run_proposed_model_for_all
@@ -219,9 +219,16 @@ class ConfigBulkUploadView(APIView):
         file = request.FILES.get('file')
         if not file:
             return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        # Clear previous configuration data so bulk file is the single source of truth
+        SalaryBand.objects.all().delete()
+        TeamRevenue.objects.all().delete()
+        MeritMatrix.objects.all().delete()
+        RevenueTrendFactor.objects.all().delete()
+        KpiAchievement.objects.all().delete()
         content = file.read().decode('utf-8').replace('\r\n','\n')
         sections = [sec.strip() for sec in content.split('\n\n') if sec.strip()]
         errors = []
+        processed = set()
         for sec in sections:
             lines = sec.split('\n')
             header = lines[0].split(',')
@@ -240,6 +247,9 @@ class ConfigBulkUploadView(APIView):
             else:
                 errors.append({'section': header, 'error': 'Unknown section header'})
                 continue
+            if model not in processed:
+                model.objects.all().delete()
+                processed.add(model)
             for idx, row in enumerate(reader, start=1):
                 # Handle TeamRevenue FK by using team_id
                 if model is TeamRevenue:
