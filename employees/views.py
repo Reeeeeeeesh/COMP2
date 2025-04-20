@@ -241,8 +241,14 @@ class ConfigBulkUploadView(APIView):
                 errors.append({'section': header, 'error': 'Unknown section header'})
                 continue
             for idx, row in enumerate(reader, start=1):
-                lookup = {k: row[k] for k in unique_keys}
-                defaults = {k: row[k] for k in row if k not in unique_keys}
+                # Handle TeamRevenue FK by using team_id
+                if model is TeamRevenue:
+                    # Convert strings to proper types for FK and Decimal
+                    lookup = {'team_id': int(row['team']), 'year': int(row['year'])}
+                    defaults = {'revenue': Decimal(row['revenue'])}
+                else:
+                    lookup = {k: row[k] for k in unique_keys}
+                    defaults = {k: row[k] for k in row if k not in unique_keys}
                 try:
                     model.objects.update_or_create(defaults=defaults, **lookup)
                 except Exception as e:
