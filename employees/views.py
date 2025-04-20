@@ -226,25 +226,27 @@ class ConfigBulkUploadView(APIView):
             lines = sec.split('\n')
             header = lines[0].split(',')
             reader = csv.DictReader(lines)
+            # Determine model and unique keys by header
             if 'role' in header and 'level' in header:
-                serializer_class = SalaryBandSerializer
+                model = SalaryBand; unique_keys = ['role','level']
             elif 'team' in header and 'revenue' in header:
-                serializer_class = TeamRevenueSerializer
+                model = TeamRevenue; unique_keys = ['team','year']
             elif 'performance_rating' in header and 'compa_ratio_range' in header:
-                serializer_class = MeritMatrixSerializer
+                model = MeritMatrix; unique_keys = ['performance_rating','compa_ratio_range']
             elif 'trend_category' in header:
-                serializer_class = RevenueTrendFactorSerializer
+                model = RevenueTrendFactor; unique_keys = ['trend_category']
             elif 'investment_performance' in header and 'risk_management' in header:
-                serializer_class = KpiAchievementSerializer
+                model = KpiAchievement; unique_keys = ['employee','year']
             else:
                 errors.append({'section': header, 'error': 'Unknown section header'})
                 continue
             for idx, row in enumerate(reader, start=1):
-                serializer = serializer_class(data=row)
-                if serializer.is_valid():
-                    serializer.save()
-                else:
-                    errors.append({'section': header, 'row': idx, 'errors': serializer.errors})
+                lookup = {k: row[k] for k in unique_keys}
+                defaults = {k: row[k] for k in row if k not in unique_keys}
+                try:
+                    model.objects.update_or_create(defaults=defaults, **lookup)
+                except Exception as e:
+                    errors.append({'section': header, 'row': idx, 'errors': str(e)})
         if errors:
             return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'detail':'All data uploaded successfully'}, status=status.HTTP_201_CREATED)
