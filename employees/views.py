@@ -251,11 +251,42 @@ class ConfigBulkUploadView(APIView):
                 model.objects.all().delete()
                 processed.add(model)
             for idx, row in enumerate(reader, start=1):
-                # Handle TeamRevenue FK by using team_id
+                # Handle foreign keys and defaults for specific models
                 if model is TeamRevenue:
-                    # Convert strings to proper types for FK and Decimal
-                    lookup = {'team_id': int(row['team']), 'year': int(row['year'])}
+                    team_val = row['team']
+                    try:
+                        team_obj = Team.objects.get(pk=int(team_val))
+                    except (ValueError, Team.DoesNotExist):
+                        team_obj, _ = Team.objects.get_or_create(name=team_val)
+                    lookup = {'team': team_obj, 'year': int(row['year'])}
                     defaults = {'revenue': Decimal(row['revenue'])}
+                elif model is KpiAchievement:
+                    # Support numeric employee_id or employee name
+                    emp_id_val = row.get('employee_id')
+                    if emp_id_val and emp_id_val.strip():
+                        try:
+                            emp_id_int = int(emp_id_val)
+                        except ValueError:
+                            errors.append({'section': header, 'row': idx, 'errors': f'Invalid employee_id: {emp_id_val}'})
+                            continue
+                        lookup = {'employee_id': emp_id_int, 'year': int(row['year'])}
+                    else:
+                        emp_name = row.get('employee', '').strip()
+                        if not emp_name:
+                            errors.append({'section': header, 'row': idx, 'errors': 'Missing employee name or id'})
+                            continue
+                        try:
+                            emp_obj = Employee.objects.get(name=emp_name)
+                        except Employee.DoesNotExist:
+                            errors.append({'section': header, 'row': idx, 'errors': f'Employee not found: {emp_name}'})
+                            continue
+                        lookup = {'employee': emp_obj, 'year': int(row['year'])}
+                    defaults = {
+                        'investment_performance': Decimal(row['investment_performance']),
+                        'risk_management': Decimal(row['risk_management']),
+                        'aum_revenue': Decimal(row['aum_revenue']),
+                        'qualitative': Decimal(row['qualitative']),
+                    }
                 else:
                     lookup = {k: row[k] for k in unique_keys}
                     defaults = {k: row[k] for k in row if k not in unique_keys}
