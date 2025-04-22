@@ -10,6 +10,7 @@ from .merit_engine import run_proposed_model_for_all
 from rest_framework import status, viewsets
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser
+from django.db import transaction
 
 @api_view(['GET'])
 def ping(request):
@@ -215,6 +216,7 @@ class KpiAchievementUploadView(APIView):
 # Bulk upload all configuration models from a single CSV file
 class ConfigBulkUploadView(APIView):
     parser_classes = [MultiPartParser]
+    @transaction.atomic
     def post(self, request, format=None):
         file = request.FILES.get('file')
         if not file:
@@ -231,7 +233,9 @@ class ConfigBulkUploadView(APIView):
         processed = set()
         for sec in sections:
             lines = sec.split('\n')
-            header = lines[0].split(',')
+            raw_header = lines[0].split(',')
+            header = [h.strip().lower() for h in raw_header if h.strip()]
+            lines[0] = ','.join(header)
             reader = csv.DictReader(lines)
             # Determine model and unique keys by header
             if 'role' in header and 'level' in header:
@@ -251,6 +255,8 @@ class ConfigBulkUploadView(APIView):
                 model.objects.all().delete()
                 processed.add(model)
             for idx, row in enumerate(reader, start=1):
+                # drop any empty-string keys
+                row = {k: v for k, v in row.items() if k}
                 # Handle foreign keys and defaults for specific models
                 if model is TeamRevenue:
                     team_val = row['team']
