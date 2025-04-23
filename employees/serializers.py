@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement
+from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, CompensationConfig
 
 class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -30,4 +30,9 @@ class RevenueTrendFactorSerializer(serializers.ModelSerializer):
 class KpiAchievementSerializer(serializers.ModelSerializer):
     class Meta:
         model = KpiAchievement
+        fields = '__all__'
+
+class CompensationConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompensationConfig
         fields = '__all__'

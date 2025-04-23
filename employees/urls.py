@@ -1,6 +1,6 @@
 from django.urls import path, include
 from .views import ping, upload_data, employees_list, calculate, \
-    SalaryBandViewSet, TeamRevenueViewSet, MeritMatrixViewSet, RevenueTrendFactorViewSet, KpiAchievementViewSet, \
+    SalaryBandViewSet, TeamRevenueViewSet, MeritMatrixViewSet, RevenueTrendFactorViewSet, KpiAchievementViewSet, CompensationConfigViewSet, \
     TeamUploadView, SalaryBandUploadView, TeamRevenueUploadView, MeritMatrixUploadView, RevenueTrendFactorUploadView, KpiAchievementUploadView, ConfigBulkUploadView
 from rest_framework.routers import DefaultRouter
 
@@ -10,6 +10,7 @@ router.register(r'team-revenues', TeamRevenueViewSet)
 router.register(r'merit-matrices', MeritMatrixViewSet)
 router.register(r'revenue-trend-factors', RevenueTrendFactorViewSet)
 router.register(r'kpi-achievements', KpiAchievementViewSet)
+router.register(r'compensation-configs', CompensationConfigViewSet)
 
 urlpatterns = [
     # CSV upload for Team master data

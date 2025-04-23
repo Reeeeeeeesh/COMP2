@@ -2,6 +2,28 @@ from django.db import models
 
 # Create your models here.
 
+class CompensationConfig(models.Model):
+    """Configuration presets for compensation calculations"""
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    base_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
+    performance_weight = models.DecimalField(max_digits=3, decimal_places=2, default=0.4)
+    revenue_weight = models.DecimalField(max_digits=3, decimal_places=2, default=0.6)
+    min_bonus_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    max_bonus_percent = models.DecimalField(max_digits=5, decimal_places=2, default=200)
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            # Set all other configs to inactive
+            CompensationConfig.objects.all().update(is_active=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} {'(Active)' if self.is_active else ''}"
+
 class Employee(models.Model):
     name = models.CharField(max_length=100)
     base_salary = models.DecimalField(max_digits=12, decimal_places=2)

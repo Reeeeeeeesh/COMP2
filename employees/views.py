@@ -3,8 +3,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from decimal import Decimal
 import csv
-from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, Team
-from .serializers import EmployeeSerializer, SalaryBandSerializer, TeamRevenueSerializer, MeritMatrixSerializer, RevenueTrendFactorSerializer, KpiAchievementSerializer
+from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, Team, CompensationConfig
+from .serializers import (
+    EmployeeSerializer, SalaryBandSerializer, TeamRevenueSerializer, MeritMatrixSerializer, 
+    RevenueTrendFactorSerializer, KpiAchievementSerializer, CompensationConfigSerializer
+)
 from .compensation_engine import run_comparison
 from .merit_engine import run_proposed_model_for_all
 from rest_framework import status, viewsets
@@ -349,3 +352,7 @@ class RevenueTrendFactorViewSet(viewsets.ModelViewSet):
 class KpiAchievementViewSet(viewsets.ModelViewSet):
     queryset = KpiAchievement.objects.all()
     serializer_class = KpiAchievementSerializer
+
+class CompensationConfigViewSet(viewsets.ModelViewSet):
+    queryset = CompensationConfig.objects.all()
+    serializer_class = CompensationConfigSerializer
