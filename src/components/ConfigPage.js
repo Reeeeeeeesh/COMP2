@@ -443,7 +443,6 @@ This tool acts as a powerful compensation calculator and simulator. You feed it 
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab label="Compensation Settings" />
           <Tab label="Saved Configurations" />
-          <Tab label="Explanation" />
         </Tabs>
       </Box>
 
@@ -664,24 +663,6 @@ This tool acts as a powerful compensation calculator and simulator. You feed it 
             </React.Fragment>
           ))}
         </List>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={2}>
-        <Box sx={{ p: 3 }}>
-          <Paper sx={{ p: 3, maxWidth: '100%', overflowX: 'auto' }}>
-            <Typography
-              component="pre"
-              sx={{
-                whiteSpace: 'pre-wrap',
-                fontFamily: 'inherit',
-                fontSize: '1rem',
-                lineHeight: 1.6
-              }}
-            >
-              {explanationText}
-            </Typography>
-          </Paper>
-        </Box>
       </TabPanel>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>

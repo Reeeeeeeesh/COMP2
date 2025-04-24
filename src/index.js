@@ -3,11 +3,25 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import Starfield from './components/Starfield';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+
+const theme = createTheme({
+  palette: {
+    mode: 'dark',
+    background: { default: '#000' },
+    text: { primary: '#fff' }
+  },
+  typography: { fontSize: 18 }
+});
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <ThemeProvider theme={theme}>
+      <Starfield />
+      <App />
+    </ThemeProvider>
   </React.StrictMode>
 );
 
