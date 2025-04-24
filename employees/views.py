@@ -56,10 +56,24 @@ def upload_data(request):
                 'is_mrt': row.get('is_mrt', '').lower() == 'true',
                 'performance_rating': row.get('performance_rating', '').strip() or None, # Strip whitespace, store None if empty
             }
+            
+            # Handle employee_id if present
+            if 'employee_id' in row and row['employee_id'].strip():
+                try:
+                    data['employee_id'] = int(row['employee_id'])
+                    # Use employee_id for lookup if available
+                    emp, created_flag = Employee.objects.update_or_create(
+                        employee_id=data['employee_id'], 
+                        defaults={**data, 'name': row['name']}
+                    )
+                except ValueError:
+                    return Response({'error': f'Invalid employee_id in row {idx}: {row["employee_id"]}'}, status=400)
+            else:
+                # Fall back to using name for lookup
+                emp, created_flag = Employee.objects.update_or_create(name=row['name'], defaults=data)
+            
             # Debug: Print processed data
             print(f"PROCESSED DATA: {data}")
-            
-            emp, created_flag = Employee.objects.update_or_create(name=row['name'], defaults=data)
             
             # Debug: Print employee after save
             print(f"SAVED EMPLOYEE: {emp.name}, Rating: {emp.performance_rating}, MRT: {emp.is_mrt}")
@@ -269,16 +283,23 @@ class ConfigBulkUploadView(APIView):
                         team_obj, _ = Team.objects.get_or_create(name=team_val)
                     lookup = {'team': team_obj, 'year': int(row['year'])}
                     defaults = {'revenue': Decimal(row['revenue'])}
+                # Special handling for KPI Achievements with employee lookup
                 elif model is KpiAchievement:
-                    # Support numeric employee_id or employee name
-                    emp_id_val = row.get('employee_id')
+                    # Check for employee_id or employee column
+                    emp_id_val = row.get('employee_id', '')
                     if emp_id_val and emp_id_val.strip():
                         try:
                             emp_id_int = int(emp_id_val)
+                            # Try to find employee by ID first
+                            try:
+                                emp_obj = Employee.objects.get(employee_id=emp_id_int)
+                                lookup = {'employee': emp_obj, 'year': int(row['year'])}
+                            except Employee.DoesNotExist:
+                                errors.append({'section': header, 'row': idx, 'errors': f'Employee with ID {emp_id_int} not found'})
+                                continue
                         except ValueError:
                             errors.append({'section': header, 'row': idx, 'errors': f'Invalid employee_id: {emp_id_val}'})
                             continue
-                        lookup = {'employee_id': emp_id_int, 'year': int(row['year'])}
                     else:
                         emp_name = row.get('employee', '').strip()
                         if not emp_name:

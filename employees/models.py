@@ -25,6 +25,7 @@ class CompensationConfig(models.Model):
         return f"{self.name} {'(Active)' if self.is_active else ''}"
 
 class Employee(models.Model):
+    employee_id = models.IntegerField(unique=True, null=True, blank=True)
     name = models.CharField(max_length=100)
     base_salary = models.DecimalField(max_digits=12, decimal_places=2)
     pool_share = models.DecimalField(max_digits=5, decimal_places=4, help_text="Fraction of revenue (0–1)")
@@ -42,6 +43,8 @@ class Employee(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
+        if self.employee_id:
+            return f"{self.employee_id} - {self.name}"
         return self.name
 
     @property

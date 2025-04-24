@@ -4,7 +4,20 @@ from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrend
 class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
-        fields = '__all__'  # id, name, base_salary, pool_share, target_bonus, performance_score, last_year_revenue, timestamps
+        fields = ['id', 'employee_id', 'name', 'base_salary', 'pool_share', 'target_bonus', 
+                 'performance_score', 'last_year_revenue', 'role', 'level', 'is_mrt', 
+                 'performance_rating', 'team']
+        
+    def create(self, validated_data):
+        # If an employee with this employee_id exists, update it instead of creating new
+        employee_id = validated_data.get('employee_id')
+        if employee_id:
+            employee, created = Employee.objects.update_or_create(
+                employee_id=employee_id,
+                defaults=validated_data
+            )
+            return employee
+        return super().create(validated_data)
 
 # Configuration serializers
 class SalaryBandSerializer(serializers.ModelSerializer):
