@@ -21,6 +21,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CsvUpload from './CsvUpload';
+import TeamUpload from './TeamUpload';
 import api from '../services/api';
 
 function EmployeeManagement() {
@@ -129,6 +130,8 @@ function EmployeeManagement() {
       </Box>
 
       <CsvUpload onUploadSuccess={fetchEmployees} />
+      
+      <TeamUpload onUploadSuccess={() => console.log('Teams updated')} />
 
       <TableContainer component={Paper} sx={{ mt: 3 }}>
         <Table>
