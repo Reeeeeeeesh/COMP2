@@ -296,6 +296,7 @@ def run_proposed_model(employee, current_year=2025, override_performance_rating=
     
     return {
         'employee': employee.name,
+        'team': employee.team.name if employee.team else '-',
         'original_salary': merit_result['original_salary'],
         'new_salary': merit_result['new_salary'],
         'salary_increase': merit_result['increase_amount'],
