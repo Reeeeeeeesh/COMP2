@@ -27,6 +27,7 @@ const ResultsDisplay = ({ results, summary }) => {
               <TableHead>
                 <TableRow>
                   <TableCell>Employee</TableCell>
+                  <TableCell>Team</TableCell>
                   <TableCell align="right">Original Salary</TableCell>
                   <TableCell align="right">New Salary</TableCell>
                   <TableCell align="right">Increase</TableCell>
@@ -43,6 +44,7 @@ const ResultsDisplay = ({ results, summary }) => {
                   return (
                     <TableRow key={row.employee}>
                       <TableCell>{row.employee}</TableCell>
+                      <TableCell>{row.team || '-'}</TableCell>
                       <TableCell align="right">{row.original_salary}</TableCell>
                       <TableCell align="right">{row.new_salary}</TableCell>
                       <TableCell align="right">{row.salary_increase}</TableCell>
