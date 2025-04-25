@@ -134,3 +134,42 @@ class RevenueTrendFactor(models.Model):
     
     def __str__(self):
         return f"{self.trend_category}: {self.adjustment_factor}"
+
+class DataSnapshot(models.Model):
+    """Model to store snapshots of all data for baseline scenarios"""
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+class EmployeeSnapshot(models.Model):
+    """Model to store employee data snapshots"""
+    snapshot = models.ForeignKey(DataSnapshot, on_delete=models.CASCADE, related_name='employees')
+    employee_id = models.IntegerField(null=True, blank=True)
+    name = models.CharField(max_length=100)
+    base_salary = models.DecimalField(max_digits=12, decimal_places=2)
+    pool_share = models.DecimalField(max_digits=5, decimal_places=4)
+    target_bonus = models.DecimalField(max_digits=12, decimal_places=2)
+    performance_score = models.DecimalField(max_digits=5, decimal_places=4)
+    last_year_revenue = models.DecimalField(max_digits=15, decimal_places=2)
+    role = models.CharField(max_length=100, blank=True, null=True)
+    level = models.CharField(max_length=50, blank=True, null=True)
+    is_mrt = models.BooleanField(default=False)
+    performance_rating = models.CharField(max_length=50, blank=True, null=True)
+    team = models.IntegerField(null=True, blank=True)  # Store team ID reference
+    
+    def __str__(self):
+        return f"{self.name} (Snapshot: {self.snapshot.name})"
+
+class ConfigSnapshot(models.Model):
+    """Model to store configuration data snapshots"""
+    snapshot = models.ForeignKey(DataSnapshot, on_delete=models.CASCADE, related_name='configs')
+    config_type = models.CharField(max_length=50)  # 'salary_band', 'merit_matrix', etc.
+    data = models.JSONField()  # Store the configuration data as JSON
+    
+    def __str__(self):
+        return f"{self.config_type} (Snapshot: {self.snapshot.name})"

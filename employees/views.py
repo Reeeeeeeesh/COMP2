@@ -3,10 +3,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from decimal import Decimal
 import csv
-from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, Team, CompensationConfig
+from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, Team, CompensationConfig, DataSnapshot, EmployeeSnapshot, ConfigSnapshot
 from .serializers import (
     EmployeeSerializer, SalaryBandSerializer, TeamRevenueSerializer, MeritMatrixSerializer, 
-    RevenueTrendFactorSerializer, KpiAchievementSerializer, CompensationConfigSerializer
+    RevenueTrendFactorSerializer, KpiAchievementSerializer, CompensationConfigSerializer,
+    DataSnapshotSerializer, DataSnapshotCreateSerializer, TeamSerializer
 )
 from .compensation_engine import run_comparison
 from .merit_engine import run_proposed_model_for_all
@@ -56,6 +57,31 @@ def upload_data(request):
                 'is_mrt': row.get('is_mrt', '').lower() == 'true',
                 'performance_rating': row.get('performance_rating', '').strip() or None, # Strip whitespace, store None if empty
             }
+            
+            # Handle team association by team_name
+            if 'team_name' in row and row['team_name'].strip():
+                try:
+                    team = Team.objects.filter(name=row['team_name']).first()
+                    if team:
+                        data['team'] = team
+                    else:
+                        print(f"WARNING: Team '{row['team_name']}' not found for employee '{row['name']}'")
+                except Exception as e:
+                    print(f"ERROR finding team by name: {str(e)}")
+            
+            # Handle team association by team ID (this takes precedence if both are provided)
+            elif 'team' in row and row['team'].strip():
+                try:
+                    team_id = int(row['team'])
+                    team = Team.objects.filter(id=team_id).first()
+                    if team:
+                        data['team'] = team
+                    else:
+                        print(f"WARNING: Team with ID {team_id} not found for employee '{row['name']}'")
+                except ValueError:
+                    print(f"WARNING: Invalid team ID '{row['team']}' for employee '{row['name']}'")
+                except Exception as e:
+                    print(f"ERROR finding team by ID: {str(e)}")
             
             # Handle employee_id if present
             if 'employee_id' in row and row['employee_id'].strip():
@@ -332,26 +358,108 @@ class ConfigBulkUploadView(APIView):
 class TeamUploadView(APIView):
     parser_classes = [MultiPartParser]
     def post(self, request, format=None):
+        print("TeamUploadView.post called")
         file = request.FILES.get('file')
         if not file:
+            print("No file provided")
             return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
-        # clear existing teams
-        Team.objects.all().delete()
-        data = file.read().decode('utf-8').splitlines()
-        reader = csv.DictReader(data)
-        errors = []
-        for idx, row in enumerate(reader, start=1):
-            name_val = row.get('name')
-            if not name_val:
-                errors.append({'row': idx, 'errors':'Missing name column'})
-                continue
+        
+        try:
+            print(f"Processing file: {file.name}, size: {file.size}")
+            # Read file content
+            content = file.read()
+            print(f"Read {len(content)} bytes")
+            
+            # Try to decode with different encodings
             try:
-                Team.objects.create(name=name_val)
-            except Exception as e:
-                errors.append({'row': idx, 'errors': str(e)})
-        if errors:
-            return Response({'errors':errors}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'detail':'Teams uploaded successfully'}, status=status.HTTP_201_CREATED)
+                data = content.decode('utf-8').splitlines()
+                print(f"Decoded with UTF-8, got {len(data)} lines")
+            except UnicodeDecodeError:
+                print("UTF-8 decode failed, trying latin-1")
+                try:
+                    data = content.decode('latin-1').splitlines()
+                    print(f"Decoded with latin-1, got {len(data)} lines")
+                except UnicodeDecodeError:
+                    print("Failed to decode file with any encoding")
+                    return Response({'detail': 'Unable to decode file. Please ensure it is a valid CSV file.'}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+            
+            # Parse CSV
+            if not data:
+                print("File is empty")
+                return Response({'detail': 'File is empty'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            print(f"CSV data first 5 lines: {data[:5]}") # Added logging
+            reader = csv.DictReader(data)
+            
+            # Check if reader.fieldnames is None (happens with malformed CSV)
+            if not reader.fieldnames:
+                print("No fieldnames detected in CSV") # Added logging
+                return Response({'detail': 'Invalid CSV format. Could not detect headers.'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            print(f"CSV fieldnames detected: {reader.fieldnames}") # Added logging
+            
+            # Validate CSV structure
+            if 'name' not in reader.fieldnames:
+                print(f"'name' column not found in fieldnames: {reader.fieldnames}")
+                return Response({
+                    'detail': f'CSV file must have a "name" column. Found columns: {", ".join(reader.fieldnames)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Clear existing teams
+            Team.objects.all().delete()
+            print("Deleted existing teams")
+            
+            # Process rows
+            errors = []
+            success_count = 0
+            
+            for idx, row in enumerate(reader, start=1):
+                print(f"Processing row {idx}: {row}")
+                name_val = row.get('name', '').strip()
+                if not name_val:
+                    print(f"Row {idx}: Missing or empty name value")
+                    errors.append({'row': idx, 'errors': 'Missing or empty name value'})
+                    continue
+                try:
+                    Team.objects.create(name=name_val)
+                    success_count += 1
+                    print(f"Created team: {name_val}")
+                except Exception as e:
+                    print(f"Error creating team at row {idx}: {str(e)}")
+                    errors.append({'row': idx, 'errors': str(e)})
+            
+            if errors and success_count == 0:
+                print(f"Failed to import any teams. {len(errors)} errors.")
+                return Response({
+                    'errors': errors,
+                    'detail': f'Failed to import any teams. Found {len(errors)} errors.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            elif errors:
+                print(f"Imported {success_count} teams with {len(errors)} errors.")
+                return Response({
+                    'errors': errors,
+                    'detail': f'Imported {success_count} teams with {len(errors)} errors.'
+                }, status=status.HTTP_207_MULTI_STATUS)
+            
+            print(f"Successfully imported {success_count} teams.")
+            return Response({
+                'detail': f'Successfully imported {success_count} teams.'
+            }, status=status.HTTP_201_CREATED)
+            
+        except csv.Error as e:
+            print(f"CSV parsing error: {str(e)}")
+            return Response({
+                'detail': f'CSV parsing error: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(f"Unexpected error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'detail': f'Error processing file: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 # Add DRF viewsets for configuration models
 class SalaryBandViewSet(viewsets.ModelViewSet):
@@ -377,3 +485,260 @@ class KpiAchievementViewSet(viewsets.ModelViewSet):
 class CompensationConfigViewSet(viewsets.ModelViewSet):
     queryset = CompensationConfig.objects.all()
     serializer_class = CompensationConfigSerializer
+    
+class TeamViewSet(viewsets.ModelViewSet):
+    queryset = Team.objects.all()
+    serializer_class = TeamSerializer
+
+# Add DRF viewsets for snapshot models
+class DataSnapshotViewSet(viewsets.ModelViewSet):
+    queryset = DataSnapshot.objects.all().order_by('-created_at')
+    serializer_class = DataSnapshotSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return DataSnapshotCreateSerializer
+        return DataSnapshotSerializer
+
+@api_view(['POST'])
+def create_snapshot(request):
+    """Create a snapshot of all current data"""
+    try:
+        # Get snapshot metadata
+        name = request.data.get('name')
+        description = request.data.get('description', '')
+        created_by = request.data.get('created_by', '')
+        
+        if not name:
+            return Response({'error': 'Snapshot name is required'}, status=400)
+        
+        # Create the snapshot
+        with transaction.atomic():
+            snapshot = DataSnapshot.objects.create(
+                name=name,
+                description=description,
+                created_by=created_by
+            )
+            
+            # Snapshot all employees
+            employees = Employee.objects.all()
+            for employee in employees:
+                EmployeeSnapshot.objects.create(
+                    snapshot=snapshot,
+                    employee_id=employee.employee_id,
+                    name=employee.name,
+                    base_salary=employee.base_salary,
+                    pool_share=employee.pool_share,
+                    target_bonus=employee.target_bonus,
+                    performance_score=employee.performance_score,
+                    last_year_revenue=employee.last_year_revenue,
+                    role=employee.role,
+                    level=employee.level,
+                    is_mrt=employee.is_mrt,
+                    performance_rating=employee.performance_rating,
+                    team=employee.team.id if employee.team else None
+                )
+            
+            # Snapshot all configuration models
+            # SalaryBands
+            salary_bands = SalaryBand.objects.all()
+            if salary_bands.exists():
+                ConfigSnapshot.objects.create(
+                    snapshot=snapshot,
+                    config_type='salary_band',
+                    data=list(salary_bands.values())
+                )
+            
+            # MeritMatrix
+            merit_matrices = MeritMatrix.objects.all()
+            if merit_matrices.exists():
+                ConfigSnapshot.objects.create(
+                    snapshot=snapshot,
+                    config_type='merit_matrix',
+                    data=list(merit_matrices.values())
+                )
+            
+            # TeamRevenue
+            team_revenues = TeamRevenue.objects.all()
+            if team_revenues.exists():
+                ConfigSnapshot.objects.create(
+                    snapshot=snapshot,
+                    config_type='team_revenue',
+                    data=list(team_revenues.values())
+                )
+            
+            # RevenueTrendFactor
+            revenue_trend_factors = RevenueTrendFactor.objects.all()
+            if revenue_trend_factors.exists():
+                ConfigSnapshot.objects.create(
+                    snapshot=snapshot,
+                    config_type='revenue_trend_factor',
+                    data=list(revenue_trend_factors.values())
+                )
+            
+            # KpiAchievement
+            kpi_achievements = KpiAchievement.objects.all()
+            if kpi_achievements.exists():
+                ConfigSnapshot.objects.create(
+                    snapshot=snapshot,
+                    config_type='kpi_achievement',
+                    data=list(kpi_achievements.values())
+                )
+            
+            # Teams
+            teams = Team.objects.all()
+            if teams.exists():
+                ConfigSnapshot.objects.create(
+                    snapshot=snapshot,
+                    config_type='team',
+                    data=list(teams.values())
+                )
+            
+            # CompensationConfig
+            compensation_configs = CompensationConfig.objects.all()
+            if compensation_configs.exists():
+                ConfigSnapshot.objects.create(
+                    snapshot=snapshot,
+                    config_type='compensation_config',
+                    data=list(compensation_configs.values())
+                )
+        
+        return Response({
+            'id': snapshot.id,
+            'name': snapshot.name,
+            'created_at': snapshot.created_at
+        }, status=201)
+    
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
+
+@api_view(['POST'])
+def restore_snapshot(request, snapshot_id):
+    """Restore data from a snapshot"""
+    try:
+        snapshot = DataSnapshot.objects.get(pk=snapshot_id)
+        
+        # Confirm restoration
+        confirm = request.data.get('confirm', False)
+        if not confirm:
+            return Response({
+                'message': 'This will replace all current data with the snapshot data. Set confirm=true to proceed.',
+                'snapshot': {
+                    'id': snapshot.id,
+                    'name': snapshot.name,
+                    'created_at': snapshot.created_at
+                }
+            })
+        
+        with transaction.atomic():
+            # Restore employees
+            # First, get all current employees to track which ones to delete
+            current_employee_ids = set(Employee.objects.values_list('id', flat=True))
+            restored_employee_ids = set()
+            
+            for emp_snapshot in snapshot.employees.all():
+                # Try to find by employee_id first if available
+                if emp_snapshot.employee_id:
+                    employee, created = Employee.objects.update_or_create(
+                        employee_id=emp_snapshot.employee_id,
+                        defaults={
+                            'name': emp_snapshot.name,
+                            'base_salary': emp_snapshot.base_salary,
+                            'pool_share': emp_snapshot.pool_share,
+                            'target_bonus': emp_snapshot.target_bonus,
+                            'performance_score': emp_snapshot.performance_score,
+                            'last_year_revenue': emp_snapshot.last_year_revenue,
+                            'role': emp_snapshot.role,
+                            'level': emp_snapshot.level,
+                            'is_mrt': emp_snapshot.is_mrt,
+                            'performance_rating': emp_snapshot.performance_rating,
+                            'team_id': emp_snapshot.team
+                        }
+                    )
+                else:
+                    # If no employee_id, try by name
+                    employee, created = Employee.objects.update_or_create(
+                        name=emp_snapshot.name,
+                        defaults={
+                            'base_salary': emp_snapshot.base_salary,
+                            'pool_share': emp_snapshot.pool_share,
+                            'target_bonus': emp_snapshot.target_bonus,
+                            'performance_score': emp_snapshot.performance_score,
+                            'last_year_revenue': emp_snapshot.last_year_revenue,
+                            'role': emp_snapshot.role,
+                            'level': emp_snapshot.level,
+                            'is_mrt': emp_snapshot.is_mrt,
+                            'performance_rating': emp_snapshot.performance_rating,
+                            'team_id': emp_snapshot.team
+                        }
+                    )
+                
+                restored_employee_ids.add(employee.id)
+            
+            # Delete employees that weren't in the snapshot
+            employees_to_delete = current_employee_ids - restored_employee_ids
+            Employee.objects.filter(id__in=employees_to_delete).delete()
+            
+            # Restore configuration data
+            for config_snapshot in snapshot.configs.all():
+                config_type = config_snapshot.config_type
+                config_data = config_snapshot.data
+                
+                if config_type == 'salary_band':
+                    # Clear existing
+                    SalaryBand.objects.all().delete()
+                    # Restore from snapshot
+                    for item in config_data:
+                        # Remove id to create new records
+                        if 'id' in item:
+                            del item['id']
+                        SalaryBand.objects.create(**item)
+                
+                elif config_type == 'merit_matrix':
+                    MeritMatrix.objects.all().delete()
+                    for item in config_data:
+                        if 'id' in item:
+                            del item['id']
+                        MeritMatrix.objects.create(**item)
+                
+                elif config_type == 'team_revenue':
+                    TeamRevenue.objects.all().delete()
+                    for item in config_data:
+                        if 'id' in item:
+                            del item['id']
+                        TeamRevenue.objects.create(**item)
+                
+                elif config_type == 'revenue_trend_factor':
+                    RevenueTrendFactor.objects.all().delete()
+                    for item in config_data:
+                        if 'id' in item:
+                            del item['id']
+                        RevenueTrendFactor.objects.create(**item)
+                
+                elif config_type == 'kpi_achievement':
+                    KpiAchievement.objects.all().delete()
+                    for item in config_data:
+                        if 'id' in item:
+                            del item['id']
+                        KpiAchievement.objects.create(**item)
+                
+                elif config_type == 'team':
+                    Team.objects.all().delete()
+                    for item in config_data:
+                        if 'id' in item:
+                            del item['id']
+                        Team.objects.create(**item)
+                
+                elif config_type == 'compensation_config':
+                    CompensationConfig.objects.all().delete()
+                    for item in config_data:
+                        if 'id' in item:
+                            del item['id']
+                        CompensationConfig.objects.create(**item)
+        
+        return Response({'message': f'Successfully restored data from snapshot: {snapshot.name}'})
+    
+    except DataSnapshot.DoesNotExist:
+        return Response({'error': 'Snapshot not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)

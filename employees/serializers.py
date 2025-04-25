@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, CompensationConfig
+from .models import Employee, CompensationConfig, Team, TeamRevenue, SalaryBand, MeritMatrix, KpiAchievement, RevenueTrendFactor, DataSnapshot, EmployeeSnapshot, ConfigSnapshot
 
 class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -49,3 +49,33 @@ class CompensationConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = CompensationConfig
         fields = '__all__'
+
+# Add TeamSerializer
+class TeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = '__all__'
+
+# Snapshot serializers
+class EmployeeSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeSnapshot
+        fields = '__all__'
+
+class ConfigSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfigSnapshot
+        fields = '__all__'
+
+class DataSnapshotSerializer(serializers.ModelSerializer):
+    employees = EmployeeSnapshotSerializer(many=True, read_only=True)
+    configs = ConfigSnapshotSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = DataSnapshot
+        fields = ['id', 'name', 'description', 'created_at', 'created_by', 'is_active', 'employees', 'configs']
+
+class DataSnapshotCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DataSnapshot
+        fields = ['name', 'description', 'created_by']
