@@ -173,3 +173,87 @@ class ConfigSnapshot(models.Model):
     
     def __str__(self):
         return f"{self.config_type} (Snapshot: {self.snapshot.name})"
+
+class Scenario(models.Model):
+    """Model to store compensation scenarios for comparison and analysis"""
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    # Base snapshot to use for this scenario
+    base_snapshot = models.ForeignKey(DataSnapshot, on_delete=models.SET_NULL, null=True, blank=True, related_name='scenarios')
+    # Scenario parameters
+    parameters = models.JSONField(default=dict)
+    # Results cache
+    results_cache = models.JSONField(null=True, blank=True)
+    
+    def __str__(self):
+        return self.name
+        
+class ScenarioEmployeeOverride(models.Model):
+    """Model to store employee-specific overrides for a scenario"""
+    scenario = models.ForeignKey(Scenario, on_delete=models.CASCADE, related_name='employee_overrides')
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
+    # Override fields
+    performance_rating = models.CharField(max_length=50, blank=True, null=True)
+    is_mrt = models.BooleanField(null=True, blank=True)
+    base_salary_override = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    target_bonus_override = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    discretionary_adjustment = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, 
+                                                 help_text="Percentage adjustment to calculated compensation")
+    
+    class Meta:
+        unique_together = ('scenario', 'employee')
+        
+    def __str__(self):
+        return f"{self.employee.name} override for {self.scenario.name}"
+
+class ScenarioVersion(models.Model):
+    """Model to store versions of a scenario for tracking changes over time"""
+    scenario = models.ForeignKey(Scenario, on_delete=models.CASCADE, related_name='versions')
+    version_number = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    parameters = models.JSONField(default=dict)
+    results_cache = models.JSONField(null=True, blank=True)
+    notes = models.TextField(blank=True, null=True, help_text="Notes about changes in this version")
+    
+    class Meta:
+        unique_together = ('scenario', 'version_number')
+        ordering = ['-version_number']
+        
+    def __str__(self):
+        return f"{self.scenario.name} v{self.version_number}"
+        
+class ScenarioComparison(models.Model):
+    """Model to store comparison configurations between scenarios or versions"""
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    # Scenarios or versions to compare
+    primary_scenario = models.ForeignKey(Scenario, on_delete=models.CASCADE, related_name='primary_comparisons')
+    primary_version = models.ForeignKey(ScenarioVersion, on_delete=models.SET_NULL, null=True, blank=True, related_name='primary_comparisons')
+    comparison_scenarios = models.ManyToManyField(Scenario, related_name='comparison_items', through='ComparisonItem')
+    # Results cache
+    results_cache = models.JSONField(null=True, blank=True)
+    
+    def __str__(self):
+        return self.name
+        
+class ComparisonItem(models.Model):
+    """Junction model for scenario comparisons"""
+    comparison = models.ForeignKey(ScenarioComparison, on_delete=models.CASCADE)
+    scenario = models.ForeignKey(Scenario, on_delete=models.CASCADE)
+    version = models.ForeignKey(ScenarioVersion, on_delete=models.SET_NULL, null=True, blank=True)
+    display_order = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        ordering = ['display_order']
+        unique_together = ('comparison', 'scenario', 'version')
+        
+    def __str__(self):
+        version_str = f" v{self.version.version_number}" if self.version else ""
+        return f"{self.scenario.name}{version_str} in {self.comparison.name}"

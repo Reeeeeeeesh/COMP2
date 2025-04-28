@@ -1,5 +1,7 @@
 from decimal import Decimal
 from django.test import TestCase
+from django.urls import reverse, resolve
+from rest_framework.test import APITestCase, APIClient
 from .models import Employee
 from .compensation_engine import calculate_model_a, run_model_a_for_all, calculate_model_b_pool, calculate_model_b_target, run_model_b_for_all, run_comparison
 
@@ -107,3 +109,154 @@ class ModelBTest(TestCase):
         self.assertEqual(len(output['results']), 2)
         names = {r['employee'] for r in output['results']}
         self.assertSetEqual(names, {self.emp.name, self.emp2.name})
+
+class APITest(APITestCase):
+    """Test API filtering and sparse field selection functionality."""
+    
+    def setUp(self):
+        """Set up test data for API tests."""
+        self.client = APIClient()
+        # Use direct URL path
+        self.api_url = '/api/employees/'
+         
+        # Create test employees with different roles
+        self.analyst = Employee.objects.create(
+            name='John Analyst',
+            employee_id='A001',
+            base_salary=Decimal('80000.00'),
+            pool_share=Decimal('0.05'),
+            target_bonus=Decimal('10000.00'),
+            performance_score=Decimal('0.85'),
+            last_year_revenue=Decimal('500000.00'),
+            role='Analyst',
+            level=1
+        )
+         
+        self.manager = Employee.objects.create(
+            name='Jane Manager',
+            employee_id='M001',
+            base_salary=Decimal('120000.00'),
+            pool_share=Decimal('0.10'),
+            target_bonus=Decimal('30000.00'),
+            performance_score=Decimal('0.90'),
+            last_year_revenue=Decimal('1000000.00'),
+            role='Manager',
+            level=3
+        )
+     
+    def test_api_list(self):
+        """Basic test to verify the API endpoint is working."""
+        response = self.client.get(self.api_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 2)  # We created 2 employees
+
+class SimulateAPITest(APITestCase):
+    """Test the stateless simulation API endpoint."""
+    
+    def setUp(self):
+        """Set up test data for API tests."""
+        self.client = APIClient()
+        self.simulate_url = '/api/simulate/'
+        
+        # Sample employee data for simulation
+        self.employee_data = [
+            {
+                "name": "John Analyst",
+                "employee_id": "A001",
+                "base_salary": "80000.00",
+                "pool_share": "0.05",
+                "target_bonus": "10000.00",
+                "performance_score": "0.85",
+                "last_year_revenue": "500000.00",
+                "role": "Analyst",
+                "level": 1,
+                "team": "Investment",
+                "performance_rating": "Meets Expectations",
+                "is_mrt": False
+            },
+            {
+                "name": "Jane Manager",
+                "employee_id": "M001",
+                "base_salary": "120000.00",
+                "pool_share": "0.10",
+                "target_bonus": "30000.00",
+                "performance_score": "0.90",
+                "last_year_revenue": "1000000.00",
+                "role": "Manager",
+                "level": 3,
+                "team": "Trading",
+                "performance_rating": "Exceeds Expectations",
+                "is_mrt": True
+            }
+        ]
+        
+        # Sample configuration for simulation
+        self.config_data = {
+            "revenue_delta": "0.05",
+            "adjustment_factor": "1.0",
+            "use_pool_method": False,
+            "use_proposed_model": True,
+            "current_year": 2025,
+            "performance_rating": "Meets Expectations",
+            "is_mrt": False,
+            "use_overrides": True
+        }
+    
+    def test_simulate_proposed_model(self):
+        """Test the simulate endpoint with the proposed model."""
+        data = {
+            "employees": self.employee_data,
+            "config": self.config_data
+        }
+        
+        response = self.client.post(self.simulate_url, data, format='json')
+        if response.status_code != 200:
+            print(f"Error response: {response.data}")
+            
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that we have results and summary in the response
+        self.assertIn('results', response.data)
+        self.assertIn('summary', response.data)
+        
+        # Check that we have the correct number of employees in the results
+        self.assertEqual(len(response.data['results']), 2)
+        
+        # Check that the employee names are in the results
+        employee_names = [emp['employee'] for emp in response.data['results']]
+        self.assertIn('John Analyst', employee_names)
+        self.assertIn('Jane Manager', employee_names)
+    
+    def test_simulate_original_model(self):
+        """Test the simulate endpoint with the original model."""
+        # Update config to use original model
+        config_data = self.config_data.copy()
+        config_data['use_proposed_model'] = False
+        
+        data = {
+            "employees": self.employee_data,
+            "config": config_data
+        }
+        
+        response = self.client.post(self.simulate_url, data, format='json')
+        if response.status_code != 200:
+            print(f"Error response: {response.data}")
+            
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that we have model_a and model_b in the response
+        self.assertIn('model_a', response.data)
+        self.assertIn('model_b', response.data)
+        
+        # Check that we have the correct number of employees in each model
+        self.assertEqual(len(response.data['model_a']), 2)
+        self.assertEqual(len(response.data['model_b']), 2)
+        
+        # Check that the employee names are in the results
+        model_a_names = [emp['employee'] for emp in response.data['model_a']]
+        self.assertIn('John Analyst', model_a_names)
+        self.assertIn('Jane Manager', model_a_names)
+        
+        model_b_names = [emp['employee'] for emp in response.data['model_b']]
+        self.assertIn('John Analyst', model_b_names)
+        self.assertIn('Jane Manager', model_b_names)

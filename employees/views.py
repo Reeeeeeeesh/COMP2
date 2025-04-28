@@ -1,20 +1,37 @@
 # DRF ping endpoint
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import csv
-from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, Team, CompensationConfig, DataSnapshot, EmployeeSnapshot, ConfigSnapshot
+from .models import Employee, SalaryBand, TeamRevenue, MeritMatrix, RevenueTrendFactor, KpiAchievement, Team, CompensationConfig, DataSnapshot, EmployeeSnapshot, ConfigSnapshot, Scenario, ScenarioEmployeeOverride, ScenarioVersion, ScenarioComparison, ComparisonItem
 from .serializers import (
     EmployeeSerializer, SalaryBandSerializer, TeamRevenueSerializer, MeritMatrixSerializer, 
     RevenueTrendFactorSerializer, KpiAchievementSerializer, CompensationConfigSerializer,
-    DataSnapshotSerializer, DataSnapshotCreateSerializer, TeamSerializer
+    DataSnapshotSerializer, DataSnapshotCreateSerializer, TeamSerializer,
+    ScenarioSerializer, ScenarioEmployeeOverrideSerializer, ScenarioVersionSerializer, ScenarioComparisonSerializer, ComparisonItemSerializer
 )
 from .compensation_engine import run_comparison
 from .merit_engine import run_proposed_model_for_all
-from rest_framework import status, viewsets
+from rest_framework import status, viewsets, filters
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser
 from django.db import transaction
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
+from rest_framework.decorators import action
+import logging
+logger = logging.getLogger(__name__)
+
+class DynamicFieldsViewSetMixin:
+    """
+    Mixin for ViewSets that support dynamic field selection.
+    """
+    def get_serializer(self, *args, **kwargs):
+        # Get fields from query params for DynamicFieldsMixin
+        fields = self.request.query_params.get('fields', None)
+        if fields:
+            kwargs['fields'] = fields
+        return super().get_serializer(*args, **kwargs)
 
 @api_view(['GET'])
 def ping(request):
@@ -178,6 +195,184 @@ def calculate(request):
         output = run_comparison(employees, revenue_delta, adjustment_factor, use_pool_method)
         
     return Response(output)
+
+@api_view(['POST'])
+def simulate(request):
+    """
+    Stateless simulation endpoint that calculates compensation without modifying the database.
+    
+    This endpoint accepts employee data and configuration parameters in the request body
+    and returns the calculated compensation without saving anything to the database.
+    
+    Request format:
+    {
+        "employees": [
+            {
+                "name": "John Doe",
+                "employee_id": "E001",
+                "base_salary": 100000,
+                "pool_share": 0.05,
+                "target_bonus": 10000,
+                "performance_score": 0.9,
+                "last_year_revenue": 500000,
+                "role": "Analyst",
+                "level": 1,
+                "team": "Investment",
+                "performance_rating": "Exceeds Expectations",
+                "is_mrt": false
+            },
+            ...
+        ],
+        "config": {
+            "revenue_delta": 0.05,
+            "adjustment_factor": 1.0,
+            "use_pool_method": false,
+            "use_proposed_model": true,
+            "current_year": 2025,
+            "performance_rating": "Meets Expectations",
+            "is_mrt": false,
+            "use_overrides": true
+        }
+    }
+    """
+    from django.db import transaction
+    from .merit_engine import run_proposed_model_for_all
+    from .compensation_engine import run_comparison
+    from .models import Employee, Team
+    from decimal import Decimal, InvalidOperation
+    
+    print("SIMULATE REQUEST DATA:", request.data)
+    try:
+        # Extract employee data and config from request
+        # Handle both formats: direct parameters or nested under 'config'/'employees'
+        if 'employees' in request.data and isinstance(request.data['employees'], list):
+            employee_data = request.data['employees']
+            # Config might be nested or at the top level
+            if 'config' in request.data and isinstance(request.data['config'], dict):
+                config = request.data['config']
+            else:
+                # Extract config parameters from top level
+                config = {
+                    'revenue_delta': request.data.get('revenue_delta', 0),
+                    'adjustment_factor': request.data.get('adjustment_factor', 1),
+                    'use_pool_method': request.data.get('use_pool_method', False),
+                    'use_proposed_model': request.data.get('use_proposed_model', True),
+                    'current_year': request.data.get('current_year', 2025),
+                    'performance_rating': request.data.get('performance_rating', 'Meets Expectations'),
+                    'is_mrt': request.data.get('is_mrt', False),
+                    'use_overrides': request.data.get('use_overrides', True)
+                }
+        else:
+            # Assume the request data itself is the employee data (for backward compatibility)
+            employee_data = [request.data]
+            config = {
+                'revenue_delta': 0,
+                'adjustment_factor': 1,
+                'use_pool_method': False,
+                'use_proposed_model': True,
+                'current_year': 2025,
+                'performance_rating': 'Meets Expectations',
+                'is_mrt': False,
+                'use_overrides': True
+            }
+        
+        print("EMPLOYEE DATA:", employee_data)
+        print("CONFIG:", config)
+        
+        # Extract config parameters
+        try:
+            revenue_delta = Decimal(str(config.get('revenue_delta', 0)))
+            adjustment_factor = Decimal(str(config.get('adjustment_factor', 1)))
+        except (ValueError, TypeError, InvalidOperation) as e:
+            print(f"Error converting config values: {e}")
+            return Response({
+                'error': f'Invalid numeric value in configuration: {e}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        use_pool_method = bool(config.get('use_pool_method', False))
+        use_proposed_model = bool(config.get('use_proposed_model', True))
+        current_year = int(config.get('current_year', 2025))
+        performance_rating = config.get('performance_rating', 'Meets Expectations')
+        is_mrt = bool(config.get('is_mrt', False))
+        use_overrides = bool(config.get('use_overrides', True))
+        
+        # Create temporary employees in a transaction and roll back at the end
+        with transaction.atomic():
+            # Create temporary Employee objects and save them to the database
+            temp_employees = []
+            for emp_data in employee_data:
+                # Handle numeric values safely
+                try:
+                    # Convert all numeric values to Decimal with proper precision
+                    base_salary = Decimal(str(emp_data.get('base_salary', 0)))
+                    pool_share = Decimal(str(emp_data.get('pool_share', 0)))
+                    target_bonus = Decimal(str(emp_data.get('target_bonus', 0)))
+                    performance_score = Decimal(str(emp_data.get('performance_score', 0)))
+                    last_year_revenue = Decimal(str(emp_data.get('last_year_revenue', 0)))
+                except (ValueError, TypeError, InvalidOperation) as e:
+                    print(f"Error converting numeric values: {e}")
+                    return Response({
+                        'error': f'Invalid numeric value in employee data: {e}',
+                        'employee': emp_data.get('name', 'Unknown')
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Handle team relationship
+                # Support both 'team' and 'team_name' fields for team
+                team_name = emp_data.get('team', emp_data.get('team_name', ''))
+                team_obj = None
+                if team_name:
+                    # Get or create the team (will be rolled back later)
+                    team_obj, _ = Team.objects.get_or_create(name=team_name)
+                
+                # Create Employee instance and save it to the database
+                employee = Employee.objects.create(
+                    name=emp_data.get('name', ''),
+                    employee_id=emp_data.get('employee_id', ''),
+                    base_salary=base_salary,
+                    pool_share=pool_share,
+                    target_bonus=target_bonus,
+                    performance_score=performance_score,
+                    last_year_revenue=last_year_revenue,
+                    role=emp_data.get('role', ''),
+                    level=emp_data.get('level', 0),
+                    team=team_obj,
+                    performance_rating=emp_data.get('performance_rating', ''),
+                    is_mrt=emp_data.get('is_mrt', False)
+                )
+                
+                temp_employees.append(employee)
+            
+            # Run selected model
+            if use_proposed_model:
+                if use_overrides:
+                    output = run_proposed_model_for_all(temp_employees, current_year, performance_rating, is_mrt)
+                else:
+                    output = run_proposed_model_for_all(temp_employees, current_year)
+            else:
+                comparison_output = run_comparison(temp_employees, revenue_delta, adjustment_factor, use_pool_method)
+                # The test expects model_a and model_b keys
+                output = comparison_output
+            
+            # Roll back the transaction to ensure no data is persisted
+            transaction.set_rollback(True)
+        
+        # Make sure the output format matches what the test expects
+        if use_proposed_model and 'results' not in output and isinstance(output, list):
+            # If the output is just a list of results, wrap it in the expected format
+            total_comp = sum(Decimal(str(result.get('total_compensation', 0))) for result in output)
+            output = {
+                'results': output,
+                'summary': {
+                    'total_compensation': total_comp,
+                    'employee_count': len(output)
+                }
+            }
+        
+        return Response(output)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print("SIMULATION ERROR:", str(e))
+        return Response({'error': f'Invalid parameters: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 # Bulk CSV upload endpoints for configuration models
 class SalaryBandUploadView(APIView):
@@ -354,151 +549,654 @@ class ConfigBulkUploadView(APIView):
             return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'detail':'All data uploaded successfully'}, status=status.HTTP_201_CREATED)
 
-# CSV upload for Team master data
-class TeamUploadView(APIView):
-    parser_classes = [MultiPartParser]
-    def post(self, request, format=None):
-        print("TeamUploadView.post called")
-        file = request.FILES.get('file')
-        if not file:
-            print("No file provided")
-            return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+# --- REMOVED OLD/DEPRECATED TEAM UPLOAD VIEWS ---
+# TeamUploadView, TeamSeedImportView, emergency_team_import, delete_all_teams
+# have been removed to avoid confusion. Use definitive_team_upload instead.
+
+# --- The Definitive Team Upload View ---
+@api_view(['POST'])
+def definitive_team_upload(request):
+    """The most robust team CSV upload view possible."""
+    logger.info("--- Definitive Team Upload Started ---")
+    file = request.FILES.get('file')
+    if not file:
+        logger.error("Definitive Upload: No file provided.")
+        return Response({'detail': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+    logger.info(f"Definitive Upload: Received file '{file.name}', size={file.size}, type='{file.content_type}'")
+
+    content = None
+    detected_encoding = None
+    errors = []
+
+    # 1. Read file content with encoding detection
+    try:
+        file.seek(0)
+        file_bytes = file.read()
+        logger.info(f"Definitive Upload: Read {len(file_bytes)} bytes.")
         
-        try:
-            print(f"Processing file: {file.name}, size: {file.size}")
-            # Read file content
-            content = file.read()
-            print(f"Read {len(content)} bytes")
-            
-            # Try to decode with different encodings
+        # Try common encodings
+        for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
             try:
-                data = content.decode('utf-8').splitlines()
-                print(f"Decoded with UTF-8, got {len(data)} lines")
+                content = file_bytes.decode(encoding)
+                detected_encoding = encoding
+                logger.info(f"Definitive Upload: Successfully decoded using {encoding}.")
+                break
             except UnicodeDecodeError:
-                print("UTF-8 decode failed, trying latin-1")
-                try:
-                    data = content.decode('latin-1').splitlines()
-                    print(f"Decoded with latin-1, got {len(data)} lines")
-                except UnicodeDecodeError:
-                    print("Failed to decode file with any encoding")
-                    return Response({'detail': 'Unable to decode file. Please ensure it is a valid CSV file.'}, 
-                                   status=status.HTTP_400_BAD_REQUEST)
+                logger.warning(f"Definitive Upload: Failed decoding with {encoding}.")
+                continue
+        
+        if content is None:
+            errors.append("Could not decode the file using common encodings (utf-8, latin-1, cp1252).")
+            logger.error("Definitive Upload: Failed to decode file content with any common encoding.")
+            return Response({'detail': 'File encoding not supported or file is corrupt.', 'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
             
-            # Parse CSV
-            if not data:
-                print("File is empty")
-                return Response({'detail': 'File is empty'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.exception("Definitive Upload: Error reading or decoding file.")
+        return Response({'detail': f'Error reading file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 2. Process lines
+    lines = []
+    try:
+        # Handle different line endings robustly
+        content = content.replace('\r\n', '\n').replace('\r', '\n')
+        raw_lines = content.split('\n')
+        logger.info(f"Definitive Upload: Split content into {len(raw_lines)} raw lines.")
+
+        # Filter empty lines and skip header
+        header_skipped = False
+        for i, line_content in enumerate(raw_lines):
+            trimmed_line = line_content.strip()
+            if not trimmed_line:
+                logger.debug(f"Definitive Upload: Skipping empty line {i+1}.")
+                continue
             
-            print(f"CSV data first 5 lines: {data[:5]}") # Added logging
-            reader = csv.DictReader(data)
-            
-            # Check if reader.fieldnames is None (happens with malformed CSV)
-            if not reader.fieldnames:
-                print("No fieldnames detected in CSV") # Added logging
-                return Response({'detail': 'Invalid CSV format. Could not detect headers.'}, 
-                               status=status.HTTP_400_BAD_REQUEST)
-            
-            print(f"CSV fieldnames detected: {reader.fieldnames}") # Added logging
-            
-            # Validate CSV structure
-            if 'name' not in reader.fieldnames:
-                print(f"'name' column not found in fieldnames: {reader.fieldnames}")
-                return Response({
-                    'detail': f'CSV file must have a "name" column. Found columns: {", ".join(reader.fieldnames)}'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            if not header_skipped:
+                logger.info(f"Definitive Upload: Skipping header line {i+1}: '{trimmed_line[:100]}...' ")
+                header_skipped = True
+                continue
+                
+            lines.append({'original_line': i+1, 'content': trimmed_line})
+        
+        logger.info(f"Definitive Upload: Found {len(lines)} potential data lines after filtering.")
+        
+        if not lines:
+             errors.append("No data lines found after the header (or file only contains a header).")
+             logger.error("Definitive Upload: No data lines found after filtering.")
+             return Response({'detail': 'No data lines found in the file after the header.', 'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.exception("Definitive Upload: Error processing lines.")
+        return Response({'detail': f'Error processing file lines: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # 3. Extract Team Names (Focus on First Column)
+    team_names = []
+    line_errors = []
+    for line_data in lines:
+        line_num = line_data['original_line']
+        line_content = line_data['content']
+        try:
+            # Use csv reader for robust splitting, handling quotes etc.
+            reader = csv.reader(io.StringIO(line_content))
+            row = next(reader)
+            if row:
+                team_name = row[0].strip()
+                if team_name:
+                    if team_name not in team_names:
+                         team_names.append(team_name)
+                         logger.debug(f"Definitive Upload: Extracted team '{team_name}' from line {line_num}.")
+                    else:
+                         logger.warning(f"Definitive Upload: Duplicate team name '{team_name}' found on line {line_num}, skipping.")
+                else:
+                    logger.warning(f"Definitive Upload: Empty team name found in first column on line {line_num}.")
+                    line_errors.append(f"Line {line_num}: First column is empty.")
+            else:
+                 logger.warning(f"Definitive Upload: CSV reader found no columns on line {line_num}.")
+                 line_errors.append(f"Line {line_num}: Could not parse any columns.")
+        except Exception as parse_error:
+            logger.warning(f"Definitive Upload: Error parsing line {line_num} ('{line_content[:50]}...'): {parse_error}")
+            line_errors.append(f"Line {line_num}: Error parsing line - {parse_error}")
+
+    logger.info(f"Definitive Upload: Extracted {len(team_names)} unique team names.")
+
+    if not team_names:
+        errors.append("Could not extract any valid, unique team names from the first column of the data lines.")
+        logger.error("Definitive Upload: Failed to extract any valid team names.")
+        return Response({'detail': 'No valid team names found in the file.', 'errors': errors, 'line_errors': line_errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 4. Database Operations (Transactional)
+    try:
+        with transaction.atomic():
+            logger.info("Definitive Upload: Starting database transaction.")
             
             # Clear existing teams
-            Team.objects.all().delete()
-            print("Deleted existing teams")
+            deleted_count, _ = Team.objects.all().delete()
+            logger.info(f"Definitive Upload: Deleted {deleted_count} existing teams.")
             
-            # Process rows
-            errors = []
-            success_count = 0
+            # Create new teams
+            created_teams = []
+            for name in team_names:
+                team = Team.objects.create(name=name)
+                created_teams.append(team.name)
             
-            for idx, row in enumerate(reader, start=1):
-                print(f"Processing row {idx}: {row}")
-                name_val = row.get('name', '').strip()
-                if not name_val:
-                    print(f"Row {idx}: Missing or empty name value")
-                    errors.append({'row': idx, 'errors': 'Missing or empty name value'})
-                    continue
-                try:
-                    Team.objects.create(name=name_val)
-                    success_count += 1
-                    print(f"Created team: {name_val}")
-                except Exception as e:
-                    print(f"Error creating team at row {idx}: {str(e)}")
-                    errors.append({'row': idx, 'errors': str(e)})
-            
-            if errors and success_count == 0:
-                print(f"Failed to import any teams. {len(errors)} errors.")
-                return Response({
-                    'errors': errors,
-                    'detail': f'Failed to import any teams. Found {len(errors)} errors.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            elif errors:
-                print(f"Imported {success_count} teams with {len(errors)} errors.")
-                return Response({
-                    'errors': errors,
-                    'detail': f'Imported {success_count} teams with {len(errors)} errors.'
-                }, status=status.HTTP_207_MULTI_STATUS)
-            
-            print(f"Successfully imported {success_count} teams.")
+            logger.info(f"Definitive Upload: Successfully created {len(created_teams)} new teams.")
+            logger.info("--- Definitive Team Upload Successful ---")
             return Response({
-                'detail': f'Successfully imported {success_count} teams.'
+                'detail': f'Successfully imported {len(created_teams)} unique teams.',
+                'teams_imported': created_teams,
+                'line_errors': line_errors # Include any non-fatal line errors
             }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.exception("Definitive Upload: Database transaction failed.")
+        return Response({'detail': f'Database error during import: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# File inspector endpoint
+@api_view(['POST'])
+def inspect_csv_file(request):
+    """Inspect a CSV file and return its exact content for debugging"""
+    logger.info("--- Inspect CSV File Started ---") 
+    file = request.FILES.get('file')
+    if not file:
+        logger.error("Inspect CSV: No file provided.") 
+        return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    result = {
+        'filename': file.name,
+        'size_bytes': file.size,
+        'content_preview': None,
+        'lines': [],
+        'encoding_used': None,
+        'content_type': file.content_type,
+    }
+    logger.info(f"Inspect CSV: Analyzing '{file.name}', size={file.size}") 
+    
+    # Try different encodings
+    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'ascii', 'cp1252']: 
+        try:
+            # Reset file position
+            file.seek(0)
+            content = file.read().decode(encoding)
+            result['encoding_used'] = encoding
+            logger.info(f"Inspect CSV: Decoded using {encoding}.") 
             
-        except csv.Error as e:
-            print(f"CSV parsing error: {str(e)}")
-            return Response({
-                'detail': f'CSV parsing error: {str(e)}'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            print(f"Unexpected error: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return Response({
-                'detail': f'Error processing file: {str(e)}'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            # Get content preview (first 500 chars)
+            result['content_preview'] = content[:500] 
+            
+            # Get lines
+            content_for_lines = content.replace('\r\n', '\n').replace('\r', '\n') 
+            lines = content_for_lines.split('\n')
+            result['line_count'] = len(lines)
+            
+            # Store first 50 lines
+            for i, line in enumerate(lines[:50]): 
+                line_data = {
+                    'line_number': i + 1, 
+                    'content': line,
+                    'length': len(line),
+                    'hex': ' '.join([f'{ord(c):02x}' for c in line[:50]]),  
+                }
+                
+                # Attempt CSV parsing for the line
+                try:
+                    reader = csv.reader(io.StringIO(line))
+                    row = next(reader)
+                    line_data['split_by_comma'] = row
+                except Exception:
+                    line_data['split_by_comma'] = ['Error parsing line']
+                
+                result['lines'].append(line_data)
+            
+            break  
+        except UnicodeDecodeError:
+            logger.warning(f"Inspect CSV: Failed decoding with {encoding}.") 
+            continue
+    
+    if not result['encoding_used']:
+        # If all encodings failed, just show byte data
+        logger.warning("Inspect CSV: Could not decode with common encodings. Showing hex dump.") 
+        file.seek(0)
+        byte_data = file.read()
+        result['encoding_used'] = 'binary'
+        result['hex_dump'] = ' '.join([f'{b:02x}' for b in byte_data[:200]]) 
+    
+    logger.info("--- Inspect CSV File Finished ---") 
+    return Response(result)
 
 # Add DRF viewsets for configuration models
-class SalaryBandViewSet(viewsets.ModelViewSet):
+class EmployeeViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for Employee model.
+    Supports filtering on all fields and dynamic field selection.
+    """
+    queryset = Employee.objects.all()
+    serializer_class = EmployeeSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
+
+class SalaryBandViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = SalaryBand.objects.all()
     serializer_class = SalaryBandSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
-class TeamRevenueViewSet(viewsets.ModelViewSet):
+class TeamRevenueViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = TeamRevenue.objects.all()
     serializer_class = TeamRevenueSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
-class MeritMatrixViewSet(viewsets.ModelViewSet):
+class MeritMatrixViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = MeritMatrix.objects.all()
     serializer_class = MeritMatrixSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
-class RevenueTrendFactorViewSet(viewsets.ModelViewSet):
+class RevenueTrendFactorViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = RevenueTrendFactor.objects.all()
     serializer_class = RevenueTrendFactorSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
-class KpiAchievementViewSet(viewsets.ModelViewSet):
+class KpiAchievementViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = KpiAchievement.objects.all()
     serializer_class = KpiAchievementSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
-class CompensationConfigViewSet(viewsets.ModelViewSet):
+class CompensationConfigViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = CompensationConfig.objects.all()
     serializer_class = CompensationConfigSerializer
-    
-class TeamViewSet(viewsets.ModelViewSet):
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
+
+class TeamViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = Team.objects.all()
     serializer_class = TeamSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
 # Add DRF viewsets for snapshot models
-class DataSnapshotViewSet(viewsets.ModelViewSet):
+class DataSnapshotViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
     queryset = DataSnapshot.objects.all().order_by('-created_at')
     serializer_class = DataSnapshotSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
     def get_serializer_class(self):
         if self.action == 'create':
             return DataSnapshotCreateSerializer
         return DataSnapshotSerializer
+
+class ScenarioViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
+    """
+    API endpoint for managing compensation scenarios.
+    
+    Scenarios allow users to create and save different compensation models
+    with specific parameters and employee overrides for comparison.
+    """
+    queryset = Scenario.objects.all()
+    serializer_class = ScenarioSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
+    ordering_fields = ['name', 'created_at', 'updated_at']
+    ordering = ['-created_at']
+    
+    @action(detail=True, methods=['post'])
+    def run(self, request, pk=None):
+        """
+        Run the scenario and return the results.
+        
+        This endpoint calculates compensation based on the scenario parameters
+        and employee overrides, then returns the results.
+        """
+        scenario = self.get_object()
+        
+        # Get parameters from the scenario
+        parameters = scenario.parameters or {}
+        
+        # Use transaction to create temporary objects for calculation
+        with transaction.atomic():
+            # If scenario has a base snapshot, use employees from that snapshot
+            if scenario.base_snapshot:
+                # Create temporary employees from the snapshot
+                snapshot_employees = EmployeeSnapshot.objects.filter(snapshot=scenario.base_snapshot)
+                temp_employees = []
+                
+                for snapshot in snapshot_employees:
+                    # Create a team if needed
+                    team_obj = None
+                    if snapshot.team:
+                        team_obj, _ = Team.objects.get_or_create(id=snapshot.team)
+                    
+                    # Create temporary employee
+                    employee = Employee.objects.create(
+                        employee_id=snapshot.employee_id,
+                        name=snapshot.name,
+                        base_salary=snapshot.base_salary,
+                        pool_share=snapshot.pool_share,
+                        target_bonus=snapshot.target_bonus,
+                        performance_score=snapshot.performance_score,
+                        last_year_revenue=snapshot.last_year_revenue,
+                        role=snapshot.role,
+                        level=snapshot.level,
+                        is_mrt=snapshot.is_mrt,
+                        performance_rating=snapshot.performance_rating,
+                        team=team_obj
+                    )
+                    
+                    # Apply overrides if any
+                    override = ScenarioEmployeeOverride.objects.filter(
+                        scenario=scenario, 
+                        employee__employee_id=snapshot.employee_id
+                    ).first()
+                    
+                    if override:
+                        if override.performance_rating:
+                            employee.performance_rating = override.performance_rating
+                        if override.is_mrt is not None:
+                            employee.is_mrt = override.is_mrt
+                        if override.base_salary_override:
+                            employee.base_salary = override.base_salary_override
+                        if override.target_bonus_override:
+                            employee.target_bonus = override.target_bonus_override
+                    
+                    temp_employees.append(employee)
+            else:
+                # Use current employees
+                current_employees = Employee.objects.all()
+                temp_employees = []
+                
+                for emp in current_employees:
+                    # Create a copy of the employee
+                    employee = Employee.objects.create(
+                        employee_id=emp.employee_id,
+                        name=emp.name,
+                        base_salary=emp.base_salary,
+                        pool_share=emp.pool_share,
+                        target_bonus=emp.target_bonus,
+                        performance_score=emp.performance_score,
+                        last_year_revenue=emp.last_year_revenue,
+                        role=emp.role,
+                        level=emp.level,
+                        is_mrt=emp.is_mrt,
+                        performance_rating=emp.performance_rating,
+                        team=emp.team
+                    )
+                    
+                    # Apply overrides if any
+                    override = ScenarioEmployeeOverride.objects.filter(
+                        scenario=scenario, 
+                        employee=emp
+                    ).first()
+                    
+                    if override:
+                        if override.performance_rating:
+                            employee.performance_rating = override.performance_rating
+                        if override.is_mrt is not None:
+                            employee.is_mrt = override.is_mrt
+                        if override.base_salary_override:
+                            employee.base_salary = override.base_salary_override
+                        if override.target_bonus_override:
+                            employee.target_bonus = override.target_bonus_override
+                    
+                    temp_employees.append(employee)
+            
+            # Extract parameters
+            use_proposed_model = parameters.get('use_proposed_model', True)
+            revenue_delta = Decimal(str(parameters.get('revenue_delta', 0)))
+            adjustment_factor = Decimal(str(parameters.get('adjustment_factor', 1)))
+            use_pool_method = parameters.get('use_pool_method', False)
+            current_year = int(parameters.get('current_year', 2025))
+            performance_rating = parameters.get('performance_rating', 'Meets Expectations')
+            is_mrt = parameters.get('is_mrt', False)
+            use_overrides = parameters.get('use_overrides', True)
+            
+            # Run the model
+            if use_proposed_model:
+                if use_overrides:
+                    output = run_proposed_model_for_all(temp_employees, current_year, performance_rating, is_mrt)
+                else:
+                    output = run_proposed_model_for_all(temp_employees, current_year)
+            else:
+                output = run_comparison(temp_employees, revenue_delta, adjustment_factor, use_pool_method)
+                
+            # Apply discretionary adjustments from overrides
+            if 'results' in output:
+                results = output['results']
+                for i, result in enumerate(results):
+                    employee_id = None
+                    for emp in temp_employees:
+                        if emp.name == result['employee']:
+                            employee_id = emp.employee_id
+                            break
+                    
+                    if employee_id:
+                        original_employee = Employee.objects.filter(employee_id=employee_id).first()
+                        if original_employee:
+                            override = ScenarioEmployeeOverride.objects.filter(
+                                scenario=scenario, 
+                                employee=original_employee
+                            ).first()
+                            
+                            if override and override.discretionary_adjustment:
+                                adjustment = float(override.discretionary_adjustment) / 100
+                                if 'bonus_amount' in result:
+                                    bonus = float(result['bonus_amount'])
+                                    result['bonus_amount'] = bonus * (1 + adjustment)
+                                if 'total_compensation' in result:
+                                    total = float(result['total_compensation'])
+                                    base = float(result.get('new_salary', result.get('adjusted_base', 0)))
+                                    bonus = total - base
+                                    adjusted_bonus = bonus * (1 + adjustment)
+                                    result['total_compensation'] = base + adjusted_bonus
+            
+            # Cache the results
+            scenario.results_cache = output
+            scenario.save()
+            
+            # Roll back all temporary objects
+            transaction.set_rollback(True)
+        
+        return Response(output)
+    
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """
+        Create a duplicate of this scenario with a new name.
+        """
+        scenario = self.get_object()
+        
+        # Get new name from request or generate one
+        new_name = request.data.get('name', f"{scenario.name} (Copy)")
+        
+        # Create new scenario
+        new_scenario = Scenario.objects.create(
+            name=new_name,
+            description=scenario.description,
+            created_by=scenario.created_by,
+            base_snapshot=scenario.base_snapshot,
+            parameters=scenario.parameters
+        )
+        
+        # Copy overrides
+        for override in ScenarioEmployeeOverride.objects.filter(scenario=scenario):
+            ScenarioEmployeeOverride.objects.create(
+                scenario=new_scenario,
+                employee=override.employee,
+                performance_rating=override.performance_rating,
+                is_mrt=override.is_mrt,
+                base_salary_override=override.base_salary_override,
+                target_bonus_override=override.target_bonus_override,
+                discretionary_adjustment=override.discretionary_adjustment
+            )
+        
+        serializer = self.get_serializer(new_scenario)
+        return Response(serializer.data)
+        
+    @action(detail=True, methods=['post'])
+    def create_version(self, request, pk=None):
+        """
+        Create a new version of this scenario.
+        
+        This endpoint creates a new version record with the current parameters and results.
+        """
+        scenario = self.get_object()
+        
+        # Get the next version number
+        latest_version = ScenarioVersion.objects.filter(scenario=scenario).order_by('-version_number').first()
+        version_number = 1
+        if latest_version:
+            version_number = latest_version.version_number + 1
+            
+        # Get notes from request
+        notes = request.data.get('notes', '')
+        created_by = request.data.get('created_by', scenario.created_by)
+        
+        # Create new version
+        version = ScenarioVersion.objects.create(
+            scenario=scenario,
+            version_number=version_number,
+            created_by=created_by,
+            parameters=scenario.parameters,
+            results_cache=scenario.results_cache,
+            notes=notes
+        )
+        
+        serializer = ScenarioVersionSerializer(version)
+        return Response(serializer.data)
+
+class ScenarioEmployeeOverrideViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
+    """
+    API endpoint for managing employee-specific overrides within scenarios.
+    """
+    queryset = ScenarioEmployeeOverride.objects.all()
+    serializer_class = ScenarioEmployeeOverrideSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
+
+class ScenarioVersionViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
+    """
+    API endpoint for managing scenario versions.
+    
+    Versions represent snapshots of a scenario's parameters and results at different points in time.
+    """
+    queryset = ScenarioVersion.objects.all()
+    serializer_class = ScenarioVersionSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
+    
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        """
+        Restore this version to the parent scenario.
+        
+        This endpoint copies the parameters and results from this version back to the parent scenario.
+        """
+        version = self.get_object()
+        scenario = version.scenario
+        
+        # Copy parameters and results back to scenario
+        scenario.parameters = version.parameters
+        scenario.results_cache = version.results_cache
+        scenario.save()
+        
+        serializer = ScenarioSerializer(scenario)
+        return Response(serializer.data)
+
+class ScenarioComparisonViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
+    """
+    API endpoint for managing scenario comparisons.
+    
+    Comparisons allow users to compare multiple scenarios or versions side by side.
+    """
+    queryset = ScenarioComparison.objects.all()
+    serializer_class = ScenarioComparisonSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
+    
+    @action(detail=True, methods=['post'])
+    def run(self, request, pk=None):
+        """
+        Run the comparison and return the results.
+        
+        This endpoint runs all scenarios in the comparison and returns the combined results.
+        """
+        comparison = self.get_object()
+        
+        # Run the primary scenario
+        primary_scenario = comparison.primary_scenario
+        primary_version = comparison.primary_version
+        
+        # If a specific version is selected, use its cached results
+        if primary_version and primary_version.results_cache:
+            primary_results = primary_version.results_cache
+        else:
+            # Otherwise run the scenario
+            primary_response = self.run_scenario(primary_scenario)
+            primary_results = primary_response.data
+        
+        # Run all comparison scenarios
+        comparison_results = []
+        for item in ComparisonItem.objects.filter(comparison=comparison):
+            scenario = item.scenario
+            version = item.version
+            
+            # If a specific version is selected, use its cached results
+            if version and version.results_cache:
+                scenario_results = version.results_cache
+            else:
+                # Otherwise run the scenario
+                scenario_response = self.run_scenario(scenario)
+                scenario_results = scenario_response.data
+                
+            # Add scenario info to results
+            scenario_info = {
+                'scenario_id': scenario.id,
+                'scenario_name': scenario.name,
+                'version_id': version.id if version else None,
+                'version_number': version.version_number if version else None,
+                'results': scenario_results
+            }
+            comparison_results.append(scenario_info)
+        
+        # Combine results
+        output = {
+            'primary': {
+                'scenario_id': primary_scenario.id,
+                'scenario_name': primary_scenario.name,
+                'version_id': primary_version.id if primary_version else None,
+                'version_number': primary_version.version_number if primary_version else None,
+                'results': primary_results
+            },
+            'comparisons': comparison_results
+        }
+        
+        # Cache the results
+        comparison.results_cache = output
+        comparison.save()
+        
+        return Response(output)
+    
+    def run_scenario(self, scenario):
+        """Helper method to run a scenario and return the results."""
+        viewset = ScenarioViewSet()
+        viewset.request = self.request
+        viewset.format_kwarg = self.format_kwarg
+        viewset.kwargs = {'pk': scenario.pk}
+        viewset.action = 'run'
+        return viewset.run(self.request, pk=scenario.pk)
+
+class ComparisonItemViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
+    """
+    API endpoint for managing comparison items.
+    
+    Comparison items represent individual scenarios or versions within a comparison.
+    """
+    queryset = ComparisonItem.objects.all()
+    serializer_class = ComparisonItemSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = '__all__'
 
 @api_view(['POST'])
 def create_snapshot(request):

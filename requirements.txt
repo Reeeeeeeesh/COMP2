@@ -1,0 +1,5 @@
+Django>=5.0.0
+djangorestframework>=3.14.0
+django-filter>=23.5
+django-dynamic-fields>=0.3.0
+django-weasyprint>=2.2.0
