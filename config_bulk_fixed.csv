@@ -1,0 +1,50 @@
+role,level,min_value,mid_value,max_value
+Analyst,Junior,172868.05,172868.05,172868.05
+Analyst,Mid,153804.64,207301.18,258007.74
+Analyst,Senior,138563.30,164757.22,166693.98
+Fund Manager,Junior,229558.81,298166.01,344545.45
+Fund Manager,Mid,131983.92,142710.41,153436.90
+Fund Manager,Senior,157574.95,181443.89,205312.83
+Head of Investments,Executive,123345.92,132736.49,142127.07
+Head of Investments,Junior,275532.33,277094.43,278656.53
+Head of Investments,Senior,139267.53,146738.23,154208.93
+Investment Director,Executive,167529.85,182769.66,198009.47
+Investment Director,Junior,130233.68,154296.05,178358.42
+Investment Director,Mid,106552.04,120626.39,134700.73
+Investment Director,Senior,102362.35,111165.74,167013.30
+Portfolio Manager,Junior,205821.45,209137.50,212453.55
+Portfolio Manager,Mid,200872.96,249222.08,297571.20
+Portfolio Manager,Senior,266061.51,289369.35,312677.19
+
+performance_rating,compa_ratio_range,increase_percentage
+Exceeds Expectations,Q1,0.0500
+Exceeds Expectations,Q2,0.0400
+Exceeds Expectations,Q3,0.0300
+Exceeds Expectations,Q4,0.0200
+Meets Expectations,Q1,0.0300
+Meets Expectations,Q2,0.0200
+Meets Expectations,Q3,0.0100
+Meets Expectations,Q4,0.0050
+Below Expectations,Q1,0.0100
+Below Expectations,Q2,0.0050
+Below Expectations,Q3,0.0000
+Below Expectations,Q4,0.0000
+
+trend_category,adjustment_factor
+Strong Growth,1.2000
+Moderate Growth,1.1000
+Stable,1.0000
+Slight Decline,0.9000
+Significant Decline,0.8000
+
+employee,year,revenue,performance,team,qualitative
+Thomas Smith,2025,0.9286,0.8501,0.9388,0.8832
+Jacob Johnson,2025,0.6509,0.6654,0.7347,0.6663
+James Evans,2025,0.6742,0.7266,0.7364,0.7023
+Lily Ward,2025,0.6874,0.7470,0.7433,0.6925
+Leo Cox,2025,0.4339,0.4451,0.4285,0.4183
+Ruby Patel,2025,0.6820,0.7342,0.7039,0.7013
+Isabella Wilson,2025,0.6850,0.6710,0.6750,0.6659
+Jessica Roberts,2025,0.3562,0.4013,0.3615,0.4326
+Sophie Williams,2025,0.9013,0.8672,0.8815,0.8981
+George Harris,2025,0.7124,0.6869,0.6643,0.7473

@@ -103,13 +103,17 @@ def upload_data(request):
             # Handle employee_id if present
             if 'employee_id' in row and row['employee_id'].strip():
                 try:
+                    # Ensure employee_id is stored as an integer
                     data['employee_id'] = int(row['employee_id'])
+                    print(f"Setting employee_id to {data['employee_id']} for {row['name']}")
+                    
                     # Use employee_id for lookup if available
                     emp, created_flag = Employee.objects.update_or_create(
                         employee_id=data['employee_id'], 
                         defaults={**data, 'name': row['name']}
                     )
                 except ValueError:
+                    print(f"ERROR: Invalid employee_id format: {row['employee_id']}")
                     return Response({'error': f'Invalid employee_id in row {idx}: {row["employee_id"]}'}, status=400)
             else:
                 # Fall back to using name for lookup
@@ -119,7 +123,7 @@ def upload_data(request):
             print(f"PROCESSED DATA: {data}")
             
             # Debug: Print employee after save
-            print(f"SAVED EMPLOYEE: {emp.name}, Rating: {emp.performance_rating}, MRT: {emp.is_mrt}")
+            print(f"SAVED EMPLOYEE: {emp.name}, ID: {emp.employee_id}, Rating: {emp.performance_rating}, MRT: {emp.is_mrt}")
             
             if created_flag:
                 created.append(emp.name)
@@ -129,6 +133,156 @@ def upload_data(request):
             print(f"ERROR processing row {idx}: {str(e)}")
             errors.append({'row': idx, 'error': str(e)})
     return Response({'created': created, 'updated': updated, 'errors': errors})
+
+@api_view(['POST', 'OPTIONS'])
+def debug_upload(request):
+    """Debug endpoint for employee CSV upload"""
+    try:
+        print("Debug upload endpoint called")
+        
+        if request.method == 'OPTIONS':
+            return Response(status=status.HTTP_200_OK)
+            
+        if 'file' not in request.FILES:
+            print("No file in request")
+            return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        file = request.FILES['file']
+        print(f"Received file: {file.name}, size: {file.size} bytes")
+        
+        # Check file extension
+        if not file.name.endswith('.csv'):
+            print("File is not a CSV")
+            return Response({'error': 'File must be a CSV'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Process the file
+        created = []
+        updated = []
+        errors = []
+        
+        try:
+            # Decode the file
+            file_data = file.read().decode('utf-8-sig')
+            csv_data = csv.reader(StringIO(file_data), delimiter=',')
+            
+            # Get headers
+            headers = next(csv_data)
+            print(f"CSV Headers: {headers}")
+            
+            # Check required columns
+            required_columns = ['name', 'base_salary', 'pool_share', 'target_bonus', 
+                               'performance_score', 'last_year_revenue']
+            missing_columns = [col for col in required_columns if col not in headers]
+            
+            if missing_columns:
+                print(f"Missing required columns: {missing_columns}")
+                return Response({
+                    'error': f'Missing required columns: {", ".join(missing_columns)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            # Process rows
+            for i, row in enumerate(csv_data, start=1):
+                if not any(row):  # Skip empty rows
+                    continue
+                    
+                # Convert row to dict
+                row_dict = {headers[i]: val for i, val in enumerate(row) if i < len(headers)}
+                print(f"Processing row {i}: {row_dict}")
+                
+                try:
+                    # Check if employee exists
+                    employee_id = row_dict.get('employee_id')
+                    name = row_dict.get('name')
+                    
+                    if employee_id:
+                        # Try to find by employee_id first
+                        employees = Employee.objects.filter(employee_id=employee_id)
+                        if employees.exists():
+                            employee = employees.first()
+                            action = 'updated'
+                        else:
+                            employee = None
+                            action = 'created'
+                    elif name:
+                        # Try to find by name
+                        employees = Employee.objects.filter(name=name)
+                        if employees.exists():
+                            employee = employees.first()
+                            action = 'updated'
+                        else:
+                            employee = None
+                            action = 'created'
+                    else:
+                        errors.append({
+                            'row': i,
+                            'error': 'Employee must have either employee_id or name'
+                        })
+                        continue
+                        
+                    # Create or update employee
+                    if not employee:
+                        employee = Employee()
+                        
+                    # Update fields
+                    for field in ['employee_id', 'name', 'base_salary', 'pool_share', 
+                                 'target_bonus', 'performance_score', 'last_year_revenue',
+                                 'role', 'level', 'is_mrt', 'performance_rating']:
+                        if field in row_dict and row_dict[field]:
+                            # Handle boolean field
+                            if field == 'is_mrt':
+                                value = row_dict[field].lower() in ['true', 'yes', '1']
+                            # Handle numeric fields
+                            elif field in ['base_salary', 'pool_share', 'target_bonus', 
+                                         'performance_score', 'last_year_revenue']:
+                                try:
+                                    value = Decimal(row_dict[field].replace(',', ''))
+                                except:
+                                    errors.append({
+                                        'row': i,
+                                        'error': f'Invalid value for {field}: {row_dict[field]}'
+                                    })
+                                    continue
+                            else:
+                                value = row_dict[field]
+                                
+                            setattr(employee, field, value)
+                            
+                    # Handle team field
+                    if 'team' in row_dict and row_dict['team']:
+                        team_name = row_dict['team']
+                        team, created = Team.objects.get_or_create(name=team_name)
+                        employee.team = team
+                        
+                    # Save employee
+                    employee.save()
+                    
+                    if action == 'created':
+                        created.append(employee.name)
+                    else:
+                        updated.append(employee.name)
+                        
+                except Exception as e:
+                    print(f"Error processing row {i}: {str(e)}")
+                    errors.append({
+                        'row': i,
+                        'error': str(e)
+                    })
+                    
+            return Response({
+                'created': created,
+                'updated': updated,
+                'errors': errors
+            })
+            
+        except UnicodeDecodeError:
+            print("Unicode decode error")
+            return Response({
+                'error': 'File encoding not supported. Please use UTF-8.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET', 'POST'])
 def employees_list(request):
@@ -549,6 +703,186 @@ class ConfigBulkUploadView(APIView):
             return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'detail':'All data uploaded successfully'}, status=status.HTTP_201_CREATED)
 
+# Debug endpoint for configuration bulk upload
+@api_view(['POST', 'OPTIONS'])
+def debug_config_upload(request):
+    """Debug endpoint for configuration bulk upload"""
+    if request.method == 'OPTIONS':
+        return Response({'message': 'CORS preflight successful'})
+    
+    # Log request details
+    print("DEBUG CONFIG UPLOAD - Request received")
+    print(f"Content-Type: {request.content_type}")
+    
+    # Check if file exists
+    file = request.FILES.get('file')
+    if not file:
+        print("DEBUG CONFIG UPLOAD - No file in request")
+        return Response({'detail': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Log file details
+    print(f"File name: {file.name}")
+    print(f"File size: {file.size}")
+    
+    try:
+        # Try to read the file content
+        content = file.read().decode('utf-8')
+        print(f"File content sample: {content[:200]}...")
+        
+        # Reset file pointer
+        file.seek(0)
+        
+        # Check if the file has the expected format (sections separated by blank lines)
+        content = file.read().decode('utf-8').replace('\r\n','\n')
+        sections = [sec.strip() for sec in content.split('\n\n') if sec.strip()]
+        print(f"Found {len(sections)} sections in the file")
+        
+        if len(sections) == 0:
+            return Response({'detail': 'File does not contain any sections. Configuration file should have sections separated by blank lines.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Analyze each section
+        for i, sec in enumerate(sections):
+            lines = sec.split('\n')
+            if not lines:
+                continue
+                
+            print(f"Section {i+1} header: {lines[0]}")
+            
+            # Check if the section has a valid header
+            raw_header = lines[0].split(',')
+            header = [h.strip().lower() for h in raw_header if h.strip()]
+            
+            # Determine the expected model based on header
+            if 'role' in header and 'level' in header:
+                print(f"Section {i+1} appears to be Salary Bands")
+            elif 'team' in header and 'revenue' in header:
+                print(f"Section {i+1} appears to be Team Revenue")
+            elif 'performance_rating' in header and 'compa_ratio_range' in header:
+                print(f"Section {i+1} appears to be Merit Matrix")
+            elif 'trend_category' in header:
+                print(f"Section {i+1} appears to be Revenue Trend Factors")
+            elif 'investment_performance' in header and 'risk_management' in header:
+                print(f"Section {i+1} appears to be KPI Achievements")
+            else:
+                print(f"Section {i+1} has unknown header: {header}")
+        
+        # Forward to a modified implementation that handles duplicates
+        file.seek(0)
+        return safe_config_bulk_upload(request)
+        
+    except Exception as e:
+        print(f"DEBUG CONFIG UPLOAD - Exception: {str(e)}")
+        return Response({
+            'detail': f'Debug upload error: {str(e)}',
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Safe version of ConfigBulkUploadView that handles duplicate employees
+@transaction.atomic
+def safe_config_bulk_upload(request):
+    file = request.FILES.get('file')
+    if not file:
+        return Response({'detail':'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Clear previous configuration data so bulk file is the single source of truth
+    SalaryBand.objects.all().delete()
+    TeamRevenue.objects.all().delete()
+    MeritMatrix.objects.all().delete()
+    RevenueTrendFactor.objects.all().delete()
+    KpiAchievement.objects.all().delete()
+    
+    content = file.read().decode('utf-8').replace('\r\n','\n')
+    sections = [sec.strip() for sec in content.split('\n\n') if sec.strip()]
+    errors = []
+    processed = set()
+    
+    for sec in sections:
+        lines = sec.split('\n')
+        raw_header = lines[0].split(',')
+        header = [h.strip().lower() for h in raw_header if h.strip()]
+        lines[0] = ','.join(header)
+        reader = csv.DictReader(lines)
+        
+        # Determine model and unique keys by header
+        if 'role' in header and 'level' in header:
+            model = SalaryBand; unique_keys = ['role','level']
+        elif 'team' in header and 'revenue' in header:
+            model = TeamRevenue; unique_keys = ['team','year']
+        elif 'performance_rating' in header and 'compa_ratio_range' in header:
+            model = MeritMatrix; unique_keys = ['performance_rating','compa_ratio_range']
+        elif 'trend_category' in header:
+            model = RevenueTrendFactor; unique_keys = ['trend_category']
+        elif 'investment_performance' in header and 'risk_management' in header:
+            model = KpiAchievement; unique_keys = ['employee','year']
+        else:
+            errors.append({'section': header, 'error': 'Unknown section header'})
+            continue
+            
+        if model not in processed:
+            model.objects.all().delete()
+            processed.add(model)
+            
+        for idx, row in enumerate(reader, start=1):
+            # drop any empty-string keys
+            row = {k: v for k, v in row.items() if k}
+            
+            # Handle foreign keys and defaults for specific models
+            if model is TeamRevenue:
+                team_val = row['team']
+                try:
+                    team_obj = Team.objects.get(pk=int(team_val))
+                except (ValueError, Team.DoesNotExist):
+                    team_obj, _ = Team.objects.get_or_create(name=team_val)
+                lookup = {'team': team_obj, 'year': int(row['year'])}
+                defaults = {'revenue': Decimal(row['revenue'])}
+            # Special handling for KPI Achievements with employee lookup
+            elif model is KpiAchievement:
+                # Check for employee_id or employee column
+                emp_id_val = row.get('employee_id', '')
+                if emp_id_val and emp_id_val.strip():
+                    try:
+                        emp_id_int = int(emp_id_val)
+                        # Try to find employee by ID first - handle multiple matches
+                        employees = Employee.objects.filter(employee_id=emp_id_int)
+                        if employees.count() == 0:
+                            errors.append({'section': header, 'row': idx, 'errors': f'Employee with ID {emp_id_int} not found'})
+                            continue
+                        # Use the first employee if multiple matches
+                        emp_obj = employees.first()
+                        lookup = {'employee': emp_obj, 'year': int(row['year'])}
+                    except ValueError:
+                        errors.append({'section': header, 'row': idx, 'errors': f'Invalid employee_id: {emp_id_val}'})
+                        continue
+                else:
+                    emp_name = row.get('employee', '').strip()
+                    if not emp_name:
+                        errors.append({'section': header, 'row': idx, 'errors': 'Missing employee name or id'})
+                        continue
+                    # Handle multiple employees with the same name
+                    employees = Employee.objects.filter(name=emp_name)
+                    if employees.count() == 0:
+                        errors.append({'section': header, 'row': idx, 'errors': f'Employee not found: {emp_name}'})
+                        continue
+                    # Use the first employee if multiple matches
+                    emp_obj = employees.first()
+                    lookup = {'employee': emp_obj, 'year': int(row['year'])}
+                defaults = {
+                    'investment_performance': Decimal(row['investment_performance']),
+                    'risk_management': Decimal(row['risk_management']),
+                    'aum_revenue': Decimal(row['aum_revenue']),
+                    'qualitative': Decimal(row['qualitative']),
+                }
+            else:
+                lookup = {k: row[k] for k in unique_keys}
+                defaults = {k: row[k] for k in row if k not in unique_keys}
+            try:
+                model.objects.update_or_create(defaults=defaults, **lookup)
+            except Exception as e:
+                errors.append({'section': header, 'row': idx, 'errors': str(e)})
+    
+    if errors:
+        return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({'detail':'All data uploaded successfully'}, status=status.HTTP_201_CREATED)
+
 # --- REMOVED OLD/DEPRECATED TEAM UPLOAD VIEWS ---
 # TeamUploadView, TeamSeedImportView, emergency_team_import, delete_all_teams
 # have been removed to avoid confusion. Use definitive_team_upload instead.
@@ -576,7 +910,7 @@ def definitive_team_upload(request):
         logger.info(f"Definitive Upload: Read {len(file_bytes)} bytes.")
         
         # Try common encodings
-        for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+        for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']: 
             try:
                 content = file_bytes.decode(encoding)
                 detected_encoding = encoding
@@ -1338,38 +1672,12 @@ def restore_snapshot(request, snapshot_id):
                 # Try to find by employee_id first if available
                 if emp_snapshot.employee_id:
                     employee, created = Employee.objects.update_or_create(
-                        employee_id=emp_snapshot.employee_id,
-                        defaults={
-                            'name': emp_snapshot.name,
-                            'base_salary': emp_snapshot.base_salary,
-                            'pool_share': emp_snapshot.pool_share,
-                            'target_bonus': emp_snapshot.target_bonus,
-                            'performance_score': emp_snapshot.performance_score,
-                            'last_year_revenue': emp_snapshot.last_year_revenue,
-                            'role': emp_snapshot.role,
-                            'level': emp_snapshot.level,
-                            'is_mrt': emp_snapshot.is_mrt,
-                            'performance_rating': emp_snapshot.performance_rating,
-                            'team_id': emp_snapshot.team
-                        }
+                        employee_id=emp_snapshot.employee_id, 
+                        defaults={**emp_snapshot.__dict__, 'name': emp_snapshot.name}
                     )
                 else:
                     # If no employee_id, try by name
-                    employee, created = Employee.objects.update_or_create(
-                        name=emp_snapshot.name,
-                        defaults={
-                            'base_salary': emp_snapshot.base_salary,
-                            'pool_share': emp_snapshot.pool_share,
-                            'target_bonus': emp_snapshot.target_bonus,
-                            'performance_score': emp_snapshot.performance_score,
-                            'last_year_revenue': emp_snapshot.last_year_revenue,
-                            'role': emp_snapshot.role,
-                            'level': emp_snapshot.level,
-                            'is_mrt': emp_snapshot.is_mrt,
-                            'performance_rating': emp_snapshot.performance_rating,
-                            'team_id': emp_snapshot.team
-                        }
-                    )
+                    employee, created = Employee.objects.update_or_create(name=emp_snapshot.name, defaults=emp_snapshot.__dict__)
                 
                 restored_employee_ids.add(employee.id)
             
@@ -1440,3 +1748,53 @@ def restore_snapshot(request, snapshot_id):
         return Response({'error': 'Snapshot not found'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=400)
+
+@api_view(['GET'])
+def debug_merit_matrix(request):
+    """Debug endpoint to check merit matrix in the database"""
+    try:
+        # Get all merit matrix entries
+        merit_matrix = MeritMatrix.objects.all()
+        print(f"Found {merit_matrix.count()} merit matrix entries in the database:")
+        
+        for entry in merit_matrix:
+            print(f"  - {entry.performance_rating} / {entry.compa_ratio_range}: {entry.increase_percentage}")
+        
+        # Return the data
+        from rest_framework import serializers
+        
+        class DebugMeritMatrixSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = MeritMatrix
+                fields = '__all__'
+        
+        serializer = DebugMeritMatrixSerializer(merit_matrix, many=True)
+        return Response(serializer.data)
+    except Exception as e:
+        print(f"Error in debug_merit_matrix: {str(e)}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def debug_salary_bands(request):
+    """Debug endpoint to check salary bands in the database"""
+    try:
+        # Get all salary bands
+        salary_bands = SalaryBand.objects.all()
+        print(f"Found {salary_bands.count()} salary bands in the database:")
+        
+        for band in salary_bands:
+            print(f"  - {band.role} (Level: {band.level}): Min={band.min_value}, Mid={band.mid_value}, Max={band.max_value}")
+        
+        # Return the data
+        from rest_framework import serializers
+        
+        class DebugSalaryBandSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = SalaryBand
+                fields = '__all__'
+        
+        serializer = DebugSalaryBandSerializer(salary_bands, many=True)
+        return Response(serializer.data)
+    except Exception as e:
+        print(f"Error in debug_salary_bands: {str(e)}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

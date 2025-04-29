@@ -29,9 +29,10 @@ class EmployeeSerializer(DynamicFieldsMixin, serializers.ModelSerializer):
 
 # Configuration serializers
 class SalaryBandSerializer(DynamicFieldsMixin, serializers.ModelSerializer):
-    # Override decimal fields to handle float values safely
-    min_salary = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
-    max_salary = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+    # Use the correct field names from the model
+    min_value = serializers.DecimalField(max_digits=12, decimal_places=2, coerce_to_string=False)
+    mid_value = serializers.DecimalField(max_digits=12, decimal_places=2, coerce_to_string=False)
+    max_value = serializers.DecimalField(max_digits=12, decimal_places=2, coerce_to_string=False)
     
     class Meta:
         model = SalaryBand
@@ -47,7 +48,7 @@ class TeamRevenueSerializer(DynamicFieldsMixin, serializers.ModelSerializer):
 
 class MeritMatrixSerializer(DynamicFieldsMixin, serializers.ModelSerializer):
     # Override decimal fields to handle float values safely
-    merit_increase = serializers.DecimalField(max_digits=5, decimal_places=4, coerce_to_string=False)
+    increase_percentage = serializers.DecimalField(max_digits=5, decimal_places=4, coerce_to_string=False)
     
     class Meta:
         model = MeritMatrix

@@ -1,0 +1,103 @@
+role,level,min_value,mid_value,max_value
+Analyst,Junior,172868.05,172868.05,172868.05
+Analyst,Mid,153804.64,207301.18,258007.74
+Analyst,Senior,138563.30,164757.22,166693.98
+Fund Manager,Junior,229558.81,298166.01,344545.45
+Fund Manager,Mid,131983.92,142710.41,153436.90
+Fund Manager,Senior,157574.95,181443.89,205312.83
+Head of Investments,Executive,123345.92,132736.49,142127.07
+Head of Investments,Junior,275532.33,277094.43,278656.53
+Head of Investments,Senior,139267.53,146738.23,154208.93
+Investment Director,Executive,167529.85,182769.66,198009.47
+Investment Director,Junior,130233.68,154296.05,178358.42
+Investment Director,Mid,106552.04,120626.39,134700.73
+Investment Director,Senior,102362.35,111165.74,167013.30
+Portfolio Manager,Junior,205821.45,209137.50,212453.55
+Portfolio Manager,Mid,290631.39,290631.39,290631.39
+Portfolio Manager,Senior,101337.59,102894.79,190883.60
+Senior Analyst,Executive,137711.77,236759.23,242878.20
+Senior Analyst,Junior,211903.60,249222.08,297571.20
+Senior Analyst,Mid,307061.52,309869.35,312677.19
+
+performance_rating,compa_ratio_range,increase_percentage
+Exceeds Expectations,Q1,0.0500
+Exceeds Expectations,Q2,0.0400
+Exceeds Expectations,Q3,0.0300
+Exceeds Expectations,Q4,0.0200
+Meets Expectations,Q1,0.0300
+Meets Expectations,Q2,0.0200
+Meets Expectations,Q3,0.0100
+Meets Expectations,Q4,0.0050
+Below Expectations,Q1,0.0100
+Below Expectations,Q2,0.0050
+Below Expectations,Q3,0.0000
+Below Expectations,Q4,0.0000
+
+trend_category,adjustment_factor
+Strong Growth,1.25
+Stable,1.00
+Decline,0.75
+
+team,year,revenue
+Alternatives,2024,15237139.99
+ESG,2024,16287590.84
+Emerging Markets,2024,8769083.04
+Equities,2024,18613783.28
+Fixed Income,2024,23991053.43
+Global Macro,2024,14093700.09
+Multi-Asset,2024,7461880.03
+Private Equity,2024,12165318.67
+Quantitative Strategies,2024,7219830.94
+Real Estate,2024,12696641.08
+
+employee,year,investment_performance,risk_management,aum_revenue,qualitative
+Thomas Smith,2025,0.9286,0.8501,0.9388,0.8832
+Jacob Johnson,2025,0.6509,0.6654,0.7347,0.6663
+James Evans,2025,0.6742,0.7266,0.7364,0.7023
+Lily Ward,2025,0.6874,0.7470,0.7433,0.6925
+Leo Cox,2025,0.4339,0.4451,0.4285,0.4183
+Ruby Patel,2025,0.6820,0.7342,0.7039,0.7013
+Isabella Wilson,2025,0.6850,0.6710,0.6750,0.6659
+Jessica Roberts,2025,0.3562,0.4013,0.3615,0.4326
+Sophie Williams,2025,0.9013,0.8672,0.8815,0.8981
+George Harris,2025,0.7124,0.6869,0.6643,0.7473
+Arthur Hall,2025,0.8682,0.8661,0.9385,0.9203
+Emma Wilson,2025,0.6955,0.6805,0.6762,0.6878
+Lucas Moore,2025,0.8967,0.9341,0.9274,0.9063
+Evie Cox,2025,0.6503,0.7233,0.7141,0.6742
+Alexander Evans,2025,0.4311,0.4311,0.4050,0.3702
+Isla Hill,2025,0.9358,0.9412,0.8915,0.8851
+Oliver Young,2025,0.9143,0.8964,0.9063,0.8931
+Isabella Patel,2025,0.7308,0.7367,0.7267,0.7267
+Isla Brown,2025,0.7256,0.6863,0.6796,0.7465
+Chloe Baker,2025,0.3899,0.3764,0.4238,0.4297
+Jack Hall,2025,0.9406,0.9498,0.9488,0.9281
+Daniel Clarke,2025,0.7463,0.7000,0.7436,0.7029
+Ethan Edwards,2025,0.8899,0.9098,0.9120,0.8756
+Noah Clarke,2025,0.7293,0.6906,0.6712,0.7230
+Isabella Roberts,2025,0.8998,0.9044,0.9320,0.8639
+Jessica Davies,2025,0.6756,0.6652,0.7079,0.7291
+Mason Brown,2025,0.8954,0.9187,0.8669,0.8555
+Alexander Hill,2025,0.3524,0.4405,0.4256,0.4137
+George Patel,2025,0.7421,0.6885,0.7331,0.6874
+Sophia Harris,2025,0.7192,0.7234,0.6809,0.7049
+George King,2025,0.7126,0.6805,0.7181,0.7240
+Evie Young,2025,0.7358,0.7206,0.6953,0.7347
+Charlie Thompson,2025,0.4276,0.3811,0.4423,0.3662
+Oliver Wilson,2025,0.7172,0.6922,0.7455,0.7498
+Charlie Roberts,2025,0.8742,0.9298,0.8991,0.8737
+Isla Roberts,2025,0.9201,0.8955,0.9321,0.8856
+Sophia Wilson,2025,0.7463,0.7268,0.6507,0.7407
+Mason Johnson,2025,0.6750,0.6888,0.7487,0.6937
+Chloe Moore,2025,0.6814,0.7232,0.7093,0.6602
+Ethan Williams,2025,0.7498,0.6724,0.7083,0.6695
+James Wright,2025,0.6865,0.6745,0.6667,0.7384
+Olivia Edwards,2025,0.7418,0.7455,0.6909,0.7112
+Oscar Smith,2025,0.7021,0.7411,0.7496,0.6689
+Isabella Williams,2025,0.6888,0.7086,0.7032,0.7146
+Logan Hall,2025,0.6985,0.7327,0.7243,0.7466
+Lucas Green,2025,0.6896,0.6996,0.7126,0.6639
+Logan Clarke,2025,0.9098,0.9444,0.9331,0.9455
+Ruby Hill,2025,0.7032,0.6626,0.7308,0.7334
+Noah Hill,2025,0.7376,0.7379,0.6829,0.6583
+Alexander Baker,2025,0.7160,0.7065,0.6759,0.7476

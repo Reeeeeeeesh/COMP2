@@ -26,7 +26,7 @@ class CompensationConfig(models.Model):
 
 class Employee(models.Model):
     employee_id = models.IntegerField(unique=True, null=True, blank=True)
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, unique=True)
     base_salary = models.DecimalField(max_digits=12, decimal_places=2)
     pool_share = models.DecimalField(max_digits=5, decimal_places=4, help_text="Fraction of revenue (0–1)")
     target_bonus = models.DecimalField(max_digits=12, decimal_places=2)

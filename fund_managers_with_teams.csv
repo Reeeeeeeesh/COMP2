@@ -1,0 +1,51 @@
+employee_id,name,base_salary,pool_share,target_bonus,performance_score,last_year_revenue,role,level,is_mrt,performance_rating,team_name
+1,Thomas Smith,280218.63,0.0396,26860.72,0.641,3755205.17,Head of Investments,Junior,FALSE,Exceeds Expectations,Fixed Income
+2,Jacob Johnson,142818.44,0.0682,62705.83,0.8864,3566359.87,Analyst,Mid,FALSE,Meets Expectations,Equities
+3,James Evans,297571.2,0.0759,43921.29,0.6622,4794622.75,Senior Analyst,Junior,TRUE,Meets Expectations,ESG
+4,Lily Ward,172868.05,0.0412,18693.29,0.7838,799165.58,Analyst,Junior,FALSE,Meets Expectations,Alternatives
+5,Leo Cox,312660.86,0.0662,74888.61,0.6183,1293911.72,Senior Analyst,Junior,FALSE,Below Expectations,Alternatives
+6,Ruby Patel,202420.78,0.0867,28825.6,0.7421,3416840.84,Investment Director,Junior,FALSE,Meets Expectations,Multi-Asset
+7,Isabella Wilson,204810.26,0.0416,93658.25,0.8753,1254152.84,Senior Analyst,Junior,FALSE,Meets Expectations,Fixed Income
+8,Jessica Roberts,152290.04,0.0369,95147.33,0.9505,1710453.83,Investment Director,Executive,FALSE,Below Expectations,Private Equity
+9,Sophie Williams,151517.64,0.0397,62716.29,0.7051,3006012.75,Head of Investments,Executive,FALSE,Exceeds Expectations,Fixed Income
+10,George Harris,213249.28,0.0805,88193.75,0.6611,967913.61,Investment Director,Executive,TRUE,Meets Expectations,Real Estate
+11,Arthur Hall,222860.87,0.0977,88166.27,0.6046,3659464.73,Investment Director,Senior,FALSE,Exceeds Expectations,Global Macro
+12,Emma Wilson,202505.4,0.0963,89447.5,0.7054,2602813.34,Portfolio Manager,Junior,FALSE,Meets Expectations,Equities
+13,Lucas Moore,133706,0.0499,28731.67,0.9814,4627683.59,Fund Manager,Senior,FALSE,Exceeds Expectations,Equities
+14,Evie Cox,346036.77,0.0845,35353.45,0.6963,2923313.33,Fund Manager,Junior,FALSE,Meets Expectations,Fixed Income
+15,Alexander Evans,113955.34,0.0728,95482.14,0.6661,2732834.18,Head of Investments,Executive,FALSE,Below Expectations,Alternatives
+16,Isla Hill,164163.4,0.0996,70239.63,0.7752,2684364.04,Fund Manager,Mid,FALSE,Exceeds Expectations,Alternatives
+17,Oliver Young,229558.81,0.0671,15611.22,0.8831,482594.08,Fund Manager,Junior,FALSE,Exceeds Expectations,Private Equity
+18,Isabella Patel,260624,0.0371,26246.51,0.9742,2941006.85,Analyst,Mid,FALSE,Meets Expectations,Real Estate
+19,Isla Brown,106171.32,0.0545,51004.18,0.7868,3699564.08,Investment Director,Junior,TRUE,Meets Expectations,Equities
+20,Chloe Baker,312651.58,0.0399,31167.76,0.7794,2225031.87,Senior Analyst,Executive,FALSE,Below Expectations,Private Equity
+21,Jack Hall,298166.01,0.0885,23322.24,0.8609,2794822.1,Fund Manager,Junior,FALSE,Exceeds Expectations,Alternatives
+22,Daniel Clarke,137711.77,0.0521,19984.01,0.7516,4929482.45,Senior Analyst,Executive,FALSE,Meets Expectations,Private Equity
+23,Ethan Edwards,273970.23,0.0324,40220.17,0.9875,2980065.4,Head of Investments,Junior,FALSE,Exceeds Expectations,Global Macro
+24,Noah Clarke,215769.6,0.0882,28381.78,0.9843,584535.03,Portfolio Manager,Junior,TRUE,Meets Expectations,Alternatives
+25,Isabella Roberts,112369.39,0.0912,35928.3,0.8378,3173031.25,Analyst,Senior,FALSE,Exceeds Expectations,Quantitative Strategies
+26,Jessica Davies,151715.92,0.0305,69867.57,0.7829,4659287.99,Fund Manager,Junior,FALSE,Meets Expectations,Real Estate
+27,Mason Brown,99780.39,0.0371,37542.04,0.9733,4428148.03,Portfolio Manager,Senior,FALSE,Exceeds Expectations,ESG
+28,Alexander Hill,161679.63,0.0987,83603.5,0.8116,3405743.38,Head of Investments,Senior,TRUE,Below Expectations,Equities
+29,George Patel,111165.74,0.0286,62024.01,0.7089,3103183.17,Investment Director,Senior,FALSE,Meets Expectations,Multi-Asset
+30,Sophia Harris,211903.6,0.0924,86918.82,0.6369,2233163.71,Senior Analyst,Junior,TRUE,Meets Expectations,Global Macro
+31,George King,344545.45,0.0329,52556.02,0.8823,2892352.95,Fund Manager,Junior,FALSE,Meets Expectations,Emerging Markets
+32,Evie Young,229181.78,0.0544,18555.45,0.7459,4678822.45,Fund Manager,Senior,FALSE,Meets Expectations,ESG
+33,Charlie Thompson,290631.39,0.0907,49542.08,0.8483,941856.02,Portfolio Manager,Mid,FALSE,Below Expectations,Multi-Asset
+34,Oliver Wilson,278872.41,0.0466,94119.35,0.9209,4347507.34,Portfolio Manager,Senior,FALSE,Meets Expectations,Alternatives
+35,Charlie Roberts,315485.03,0.0887,33906.87,0.9266,2409455.53,Senior Analyst,Mid,FALSE,Exceeds Expectations,Emerging Markets
+36,Isla Roberts,168630.73,0.0891,97185.57,0.7116,3279112.35,Analyst,Senior,TRUE,Exceeds Expectations,Fixed Income
+37,Sophia Wilson,236759.23,0.0987,18251.86,0.8386,1859298.14,Senior Analyst,Executive,TRUE,Meets Expectations,Fixed Income
+38,Mason Johnson,148775.08,0.0767,15143.76,0.9702,2784569.59,Investment Director,Mid,FALSE,Meets Expectations,Global Macro
+39,Chloe Moore,164757.22,0.0878,76179.11,0.7201,1684566.38,Analyst,Senior,FALSE,Meets Expectations,Fixed Income
+40,Ethan Williams,131796.83,0.0732,47227.35,0.8993,1035331.25,Head of Investments,Senior,FALSE,Meets Expectations,Emerging Markets
+41,James Wright,157466.7,0.0544,64298.71,0.8619,2431943.31,Analyst,Mid,FALSE,Meets Expectations,Emerging Markets
+42,Olivia Edwards,102894.79,0.0612,68799.97,0.7341,4128432.63,Portfolio Manager,Senior,FALSE,Meets Expectations,Real Estate
+43,Oscar Smith,92477.7,0.0987,66958.29,0.9074,2385997.61,Investment Director,Mid,FALSE,Meets Expectations,ESG
+44,Isabella Williams,257135.66,0.0204,78831.98,0.908,711619.02,Analyst,Mid,FALSE,Meets Expectations,Equities
+45,Logan Hall,93558.96,0.0399,87108.59,0.7826,4046799.69,Investment Director,Senior,FALSE,Meets Expectations,Quantitative Strategies
+46,Lucas Green,304253.68,0.0638,91262.69,0.8975,2478437.3,Senior Analyst,Mid,FALSE,Meets Expectations,Private Equity
+47,Logan Clarke,249222.08,0.042,21586.09,0.7143,1504232.51,Senior Analyst,Junior,FALSE,Exceeds Expectations,Fixed Income
+48,Ruby Hill,121257.42,0.0371,50263.77,0.7324,2436436.66,Fund Manager,Mid,FALSE,Meets Expectations,Global Macro
+49,Noah Hill,85273.63,0.0905,63933.68,0.7908,4725159.96,Senior Analyst,Executive,FALSE,Meets Expectations,Fixed Income
+50,Alexander Baker,242878.2,0.0376,33650.84,0.7743,339319.14,Senior Analyst,Executive,FALSE,Meets Expectations,Private Equity

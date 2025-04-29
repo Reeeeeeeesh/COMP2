@@ -34,11 +34,15 @@ urlpatterns = [
     path('kpi-achievements/upload/', views.KpiAchievementUploadView.as_view(), name='kpiachievement-upload'),
     # Bulk upload all configuration sections
     path('config-bulk-upload/', views.ConfigBulkUploadView.as_view(), name='config-bulk-upload'),
+    path('debug-config-upload/', views.debug_config_upload, name='debug-config-upload'),
     # Snapshot endpoints
     path('snapshots/create/', views.create_snapshot, name='create-snapshot'),
     path('snapshots/<int:snapshot_id>/restore/', views.restore_snapshot, name='restore-snapshot'),
     # Basic endpoints
     path('upload-data/', views.upload_data, name='upload-data'),
+    path('debug-upload/', views.debug_upload, name='debug-upload'),
+    path('debug-salary-bands/', views.debug_salary_bands, name='debug-salary-bands'),
+    path('debug-merit-matrix/', views.debug_merit_matrix, name='debug-merit-matrix'),
     path('calculate/', views.calculate, name='calculate'),
     path('simulate/', views.simulate, name='simulate'),
 ]
