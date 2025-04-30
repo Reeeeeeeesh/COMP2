@@ -10,7 +10,7 @@ from .serializers import (
     DataSnapshotSerializer, DataSnapshotCreateSerializer, TeamSerializer,
     ScenarioSerializer, ScenarioEmployeeOverrideSerializer, ScenarioVersionSerializer, ScenarioComparisonSerializer, ComparisonItemSerializer
 )
-from .compensation_engine import run_comparison
+from .compensation_engine import calculate_model_a_for_all, run_comparison_for_all
 from .merit_engine import run_proposed_model_for_all
 from rest_framework import status, viewsets, filters
 from rest_framework.views import APIView
@@ -302,53 +302,49 @@ def employees_list(request):
 @api_view(['POST'])
 def calculate(request):
     """Run Model A and B comparison for all employees."""
-    print("REQUEST DATA:", request.data)
     try:
-        # Get common parameters
-        revenue_delta = Decimal(str(request.data.get('revenue_delta', 0)))
-        
-        # Get model-specific parameters
-        adjustment_factor = Decimal(str(request.data.get('adjustment_factor', 1)))
+        revenue_delta = Decimal(request.data.get('revenue_delta', '0'))
+        adjustment_factor = Decimal(request.data.get('adjustment_factor', '1'))
         use_pool_method = bool(request.data.get('use_pool_method', False))
-        
-        # Get model selection parameter
         use_proposed_model = bool(request.data.get('use_proposed_model', False))
         current_year = int(request.data.get('current_year', 2025))
-        # Get proposed model parameters
-        performance_rating = request.data.get('performance_rating', 'Meets Expectations')
-        is_mrt = bool(request.data.get('is_mrt', False))
-        use_overrides = bool(request.data.get('use_overrides', True))
-        
-        print("PARAMS:", {
+        performance_rating = request.data.get('performance_rating', None)
+        is_mrt = request.data.get('is_mrt', None)
+        if is_mrt is not None:
+            is_mrt = bool(is_mrt)
+        use_overrides = bool(request.data.get('use_overrides', False))
+
+        # Log the request parameters
+        print("CALCULATE REQUEST:", {
+            "revenue_delta": revenue_delta,
+            "adjustment_factor": adjustment_factor,
+            "use_pool_method": use_pool_method,
             "use_proposed_model": use_proposed_model,
+            "current_year": current_year,
             "performance_rating": performance_rating,
             "is_mrt": is_mrt,
             "use_overrides": use_overrides,
-            "current_year": current_year
         })
-    except Exception as e:
-        print("ERROR:", str(e))
-        return Response({'error': f'Invalid parameters: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # If using proposed model without overrides, calculate only on employees imported via CSV (have a performance_rating)
-    if use_proposed_model and not use_overrides:
-        employees = Employee.objects.filter(performance_rating__isnull=False).exclude(performance_rating='')
-    else:
+
         employees = Employee.objects.all()
-    print("EMPLOYEE COUNT:", employees.count())
-    for emp in employees[:3]:  # Print first 3 for debugging
-        print(f"EMPLOYEE: {emp.name}, Rating: {emp.performance_rating}, MRT: {emp.is_mrt}")
-    
-    # Run selected model
-    if use_proposed_model:
-        if use_overrides:
-            output = run_proposed_model_for_all(employees, current_year, performance_rating, is_mrt)
+
+        if use_proposed_model:
+            if performance_rating or is_mrt is not None:
+                output = run_proposed_model_for_all(employees, current_year, performance_rating, is_mrt)
+            else:
+                output = run_proposed_model_for_all(employees, current_year)
         else:
-            output = run_proposed_model_for_all(employees, current_year)
-    else:
-        output = run_comparison(employees, revenue_delta, adjustment_factor, use_pool_method)
-        
-    return Response(output)
+            if use_pool_method:
+                output = run_comparison_for_all(employees, revenue_delta, adjustment_factor)
+            else:
+                output = calculate_model_a_for_all(employees, revenue_delta, adjustment_factor)
+
+        return Response(output)
+    except (ValueError, InvalidOperation) as e:
+        return Response({'error': str(e)}, status=400)
+    except Exception as e:
+        print(f"Error in calculate: {str(e)}")
+        return Response({'error': str(e)}, status=500)
 
 @api_view(['POST'])
 def simulate(request):
@@ -391,7 +387,7 @@ def simulate(request):
     """
     from django.db import transaction
     from .merit_engine import run_proposed_model_for_all
-    from .compensation_engine import run_comparison
+    from .compensation_engine import run_comparison_for_all, calculate_model_a_for_all
     from .models import Employee, Team
     from decimal import Decimal, InvalidOperation
     
@@ -503,10 +499,11 @@ def simulate(request):
                 else:
                     output = run_proposed_model_for_all(temp_employees, current_year)
             else:
-                comparison_output = run_comparison(temp_employees, revenue_delta, adjustment_factor, use_pool_method)
-                # The test expects model_a and model_b keys
-                output = comparison_output
-            
+                if use_pool_method:
+                    output = run_comparison_for_all(temp_employees, revenue_delta, adjustment_factor)
+                else:
+                    output = calculate_model_a_for_all(temp_employees, revenue_delta, adjustment_factor)
+                
             # Roll back the transaction to ensure no data is persisted
             transaction.set_rollback(True)
         
@@ -1293,7 +1290,10 @@ class ScenarioViewSet(DynamicFieldsViewSetMixin, viewsets.ModelViewSet):
                 else:
                     output = run_proposed_model_for_all(temp_employees, current_year)
             else:
-                output = run_comparison(temp_employees, revenue_delta, adjustment_factor, use_pool_method)
+                if use_pool_method:
+                    output = run_comparison_for_all(temp_employees, revenue_delta, adjustment_factor)
+                else:
+                    output = calculate_model_a_for_all(temp_employees, revenue_delta, adjustment_factor)
                 
             # Apply discretionary adjustments from overrides
             if 'results' in output:
@@ -1555,6 +1555,13 @@ def create_snapshot(request):
             # Snapshot all employees
             employees = Employee.objects.all()
             for employee in employees:
+                try:
+                    team_id = employee.team.id if employee.team else None
+                except Exception as e:
+                    # Handle case where team relationship might be corrupted
+                    print(f"Warning: Error accessing team for employee {employee.name}: {str(e)}")
+                    team_id = None
+                
                 EmployeeSnapshot.objects.create(
                     snapshot=snapshot,
                     employee_id=employee.employee_id,
@@ -1568,7 +1575,7 @@ def create_snapshot(request):
                     level=employee.level,
                     is_mrt=employee.is_mrt,
                     performance_rating=employee.performance_rating,
-                    team=employee.team.id if employee.team else None
+                    team=team_id
                 )
             
             # Snapshot all configuration models
@@ -1642,6 +1649,7 @@ def create_snapshot(request):
         }, status=201)
     
     except Exception as e:
+        print(f"Error creating snapshot: {str(e)}")
         return Response({'error': str(e)}, status=400)
 
 @api_view(['POST'])
